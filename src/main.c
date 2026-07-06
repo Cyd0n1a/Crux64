@@ -8,15 +8,18 @@
  * Crux64 — physics-based procedural mountain climbing for the N64.
  * (c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries.
  *
- * Phase 3 (GDD 5.3): stick-figure IK + limb snapping. Hold a C button
- * to steer that limb along the rock, release to catch the nearest grip;
- * the torso follows the anchors and a D-pad orbit camera tracks the
- * climb. Balance and stamina land in Phase 4.
+ * Phase 3 (GDD 5.3): stick-figure IK + limb snapping. Spawn on foot at
+ * the mountain's base: walk with the stick (hold Z to steer the camera
+ * instead), hold a C button at a wall to grab on. While climbing, hold
+ * a C button to steer that limb along the rock, release to catch the
+ * nearest grip; R with no limb held steps off onto walkable ground.
+ * Balance and stamina land in Phase 4.
  */
 
 #include <libdragon.h>
 #include <t3d/t3d.h>
 #include <math.h>
+#include <stdio.h>
 
 #include "version.h"
 #include "input/input.h"
@@ -67,20 +70,28 @@ int main(void) {
         input_poll();
         const input_state_t *in = input_state();
 
-        climber_update(in, dt);
+        climber_update(in, cam_yaw, dt);
 
-        cam_yaw   += in->cam_x * dt * 2.2f;
-        cam_pitch += in->cam_y * dt * 1.6f;
+        /* D-pad always orbits; on foot, holding Z hands the stick to
+         * the camera too (the sim ignores it while Z is down). */
+        bool cam_stick = cs->mode == CLIMBER_ON_FOOT && in->z_held;
+        cam_yaw   += (in->cam_x + (cam_stick ? in->stick_x : 0.f)) * dt * 2.2f;
+        cam_pitch += (in->cam_y + (cam_stick ? in->stick_y : 0.f)) * dt * 1.6f;
         if (cam_pitch < -0.45f) cam_pitch = -0.45f;
         if (cam_pitch >  1.05f) cam_pitch =  1.05f;
 
         /* Haptics: solid catch thumps, a whiffed release buzzes softly;
-         * piton/rest/chalk keep their Phase 1 cues. */
+         * the climbing-verb cues (piton/rest/chalk) only fire on the
+         * wall — on foot Z is the camera modifier, not the piton. */
         if (cs->snapped)     rumble_kick(0.5f, 0.18f);
         if (cs->snap_failed) rumble_kick(0.25f, 0.30f);
-        if (in->piton) rumble_kick(1.0f, 0.35f);
-        if (in->rest)  rumble_kick(0.4f, 0.60f);
-        if (in->chalk) rumble_kick(0.2f, 0.15f);
+        if (cs->mounted)     rumble_kick(0.45f, 0.20f);
+        if (cs->dismounted)  rumble_kick(0.3f, 0.15f);
+        if (cs->mode == CLIMBER_CLIMBING) {
+            if (in->piton) rumble_kick(1.0f, 0.35f);
+            if (in->rest)  rumble_kick(0.4f, 0.60f);
+            if (in->chalk) rumble_kick(0.2f, 0.15f);
+        }
         rumble_update(dt);
 
         T3DVec3 target = {{ cs->neck[0], cs->neck[1], cs->neck[2] }};
@@ -95,11 +106,19 @@ int main(void) {
         float ground = mountain_height(eye.v[0], eye.v[2]) + 0.6f;
         if (eye.v[1] < ground) eye.v[1] = ground;
 
+        char status[48];
+        if (cs->mode == CLIMBER_ON_FOOT)
+            snprintf(status, sizeof status, "ON FOOT   (Z) CAMERA  (C) GRAB WALL");
+        else if (cs->active != LIMB_NONE)
+            snprintf(status, sizeof status, "MOVING: %s", limb_name(cs->active));
+        else
+            snprintf(status, sizeof status, "ON WALL   (R) STEP OFF");
+
         render_hud_t hud = {
             .gen_ms      = gen_ms,
             .climber_alt = cs->alt,
             .rumble_ok   = in->rumble_present,
-            .limb        = cs->active != LIMB_NONE ? limb_name(cs->active) : NULL,
+            .status      = status,
             .grip_count  = grips_count(),
         };
         render_frame(&eye, &target, &hud);

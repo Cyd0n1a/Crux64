@@ -17,14 +17,28 @@ See [Crux64_GDD.md](Crux64_GDD.md) for the full design document.
 
 ## Controls (GDD 2.4)
 
+You start on foot at the base of the mountain.
+
+**On foot**
+
+| Input | Action |
+|---|---|
+| Analog stick | Walk (camera-relative) |
+| Z (hold) | Steer the camera with the stick instead |
+| C (any, hold) | Grab the wall when facing holds within reach |
+| D-Pad | Orbit camera |
+
+**On the wall**
+
 | Input | Action |
 |---|---|
 | C-Up / C-Left / C-Right / C-Down | Select right arm / left arm / right leg / left leg |
-| Analog stick | Move selected limb (release C to snap to grip) |
+| Analog stick | Move selected limb (release C to snap to the green hold) |
 | Z | Place piton / clip in |
-| R | Shake out / rest selected limb |
+| R (limb selected) | Shake out / rest selected limb |
+| R (no limb selected) | Step off onto walkable ground (base, ledges, benches) |
 | A | Apply chalk |
-| D-Pad | Free-look camera |
+| D-Pad | Orbit camera |
 
 ## Building
 
@@ -46,6 +60,9 @@ hardware via a flashcart.
 - [x] Phase 3 — stick-figure IK + limb snapping
       (hold a C button to steer that limb along the rock; release to
       catch the pulsing green hold; grips generate on all 45°+ faces)
+- [x] Phase 3.5 — on-foot mode: spawn at the mountain's base, walk the
+      aprons and benches, grab on and step off anywhere walkable meets
+      climbable
 - [ ] Phase 4 — posture, balance, stamina
 - [ ] Phase 5 — audio (minimp3 music + procedural DSP SFX)
 - [ ] Phase 6 — EEPROM saves, polish, optimization

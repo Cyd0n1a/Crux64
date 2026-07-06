@@ -6,7 +6,7 @@ typedef struct {
     float gen_ms;        /* boot-time mountain generation cost */
     float climber_alt;
     bool  rumble_ok;
-    const char *limb;    /* selected limb name, NULL when none held */
+    const char *status;  /* mode/limb line, NULL to hide */
     int   grip_count;
 } render_hud_t;
 

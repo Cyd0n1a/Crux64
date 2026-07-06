@@ -41,9 +41,10 @@ void input_poll(void) {
     st.stick_x = stick_norm(in.stick_x);
     st.stick_y = stick_norm(in.stick_y);
 
-    st.piton = btn.z;
-    st.rest  = btn.r;
-    st.chalk = btn.a;
+    st.piton  = btn.z;
+    st.z_held = held.z;
+    st.rest   = btn.r;
+    st.chalk  = btn.a;
 
     st.cam_x = (held.d_right ? 1 : 0) - (held.d_left ? 1 : 0);
     st.cam_y = (held.d_up    ? 1 : 0) - (held.d_down ? 1 : 0);

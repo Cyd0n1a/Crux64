@@ -25,6 +25,7 @@ typedef struct {
     float stick_y;
 
     bool  piton;           /* Z pressed this frame */
+    bool  z_held;          /* Z held: on foot, stick becomes camera */
     bool  rest;            /* R pressed this frame */
     bool  chalk;           /* A pressed this frame */
 

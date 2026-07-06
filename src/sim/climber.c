@@ -14,6 +14,15 @@ static int prev_grip[LIMB_COUNT];   /* fallback if a release finds no hold */
 #define WALL_GAP     0.34f   /* hip clearance off the face */
 #define TORSO_EASE   7.f
 
+#define WALK_SPEED     2.1f
+#define WALK_SLOPE_MIN 0.72f  /* ground ny below this is too steep to walk */
+#define MOUNT_RADIUS   1.35f  /* a hold this close to the chest is grabbable */
+#define DISMOUNT_H     1.15f  /* max hip height over ground to step off */
+#define STAND_H        ((CL_LEG_UPPER + CL_LEG_LOWER) * 0.93f)
+
+static float gait;         /* walk cycle phase */
+static float walk_sm;      /* smoothed walk speed for the gait pose */
+
 static const float WORLD_UP[3] = { 0.f, 1.f, 0.f };
 
 static bool limb_is_arm(limb_id_t l) {
@@ -267,71 +276,15 @@ static void solve_all_limbs(void) {
     }
 }
 
-void climber_update(const input_state_t *in, float dt) {
-    cl.snapped = cl.snap_failed = false;
+/* Latch onto the wall: frame off the nearest hold's face, then seed
+ * each limb on a close, unshared grip near its resting spot — far or
+ * doubled-up seeds start the climber overextended. */
+static bool mount_wall(const float probe[3]) {
+    int start = grips_nearest(probe, MOUNT_RADIUS, -1);
+    if (start < 0)
+        return false;
+    const grip_t *s = grip_get(start);
 
-    /* A change of held C button snaps the old limb first — input.c only
-     * raises limb_released when every C button is up. */
-    if (cl.active != LIMB_NONE && in->limb != cl.active)
-        snap_limb(cl.active);
-    cl.active = in->limb;
-
-    if (cl.active != LIMB_NONE) {
-        climber_limb_t *lb = &cl.limbs[cl.active];
-        if (lb->grip >= 0) {
-            prev_grip[cl.active] = lb->grip;
-            lb->grip = -1;
-        }
-        steer_tip(lb, cl.active, in, dt);
-    }
-
-    solve_torso(dt);
-    solve_all_limbs();
-}
-
-const climber_t *climber_state(void) {
-    return &cl;
-}
-
-/* Boot placement: a low grip with company to stand on and — the part
- * that matters — a tall column of holds overhead. The lowest crag is
- * often a 3m boulder that tops out onto a walkable bench, stranding
- * the climber; score candidates by route length instead. */
-static int find_start_grip(void) {
-    float y_cap = 60.f;
-    for (int tries = 0; tries < 3; tries++, y_cap *= 2.f) {
-        int best = -1;
-        int best_score = -1;
-        for (int i = 0; i < grips_count(); i += 3) {
-            const grip_t *g = grip_get(i);
-            if (g->pos[1] >= y_cap)
-                continue;
-            int near[24];
-            int n = grips_collect(g->pos, 1.8f, near, 24);
-            int above = 0;
-            for (int k = 0; k < n; k++)
-                if (grip_get(near[k])->pos[1] > g->pos[1] + 0.5f)
-                    above++;
-            if (n < 5 || above < 2)
-                continue;
-            int score = grips_column(g->pos, 5.f, 45.f);
-            if (score > best_score) {
-                best_score = score;
-                best = i;
-            }
-        }
-        if (best >= 0)
-            return best;
-    }
-    return 0;
-}
-
-void climber_init(void) {
-    cl = (climber_t){ .active = LIMB_NONE };
-
-    const grip_t *s = grip_get(find_start_grip());
-
-    /* Provisional frame off the start hold's face. */
     v3_copy(cl.wall_n, s->n);
     v3_scale(cl.fwd, cl.wall_n, -1.f);
     float upt[3];
@@ -345,12 +298,10 @@ void climber_init(void) {
         v3_set(cl.right, 1.f, 0.f, 0.f);
 
     v3_copy(cl.hip, s->pos);
-    v3_mad(cl.hip, upt, 1.0f);
+    v3_mad(cl.hip, upt, 0.7f);
     v3_mad(cl.hip, cl.wall_n, WALL_GAP);
     place_roots();
 
-    /* Seed each limb on a close, unshared grip near its resting spot —
-     * far or doubled-up seeds start the climber overextended. */
     for (int l = 0; l < LIMB_COUNT; l++) {
         climber_limb_t *lb = &cl.limbs[l];
         float want[3];
@@ -383,7 +334,7 @@ void climber_init(void) {
         if (g < 0)
             g = grips_nearest(s->pos, 3.f, -1);
         if (g < 0)
-            g = 0;
+            g = start;
         attach_tip(lb, g);
         prev_grip[l] = g;
     }
@@ -392,4 +343,269 @@ void climber_init(void) {
     for (int i = 0; i < 12; i++)
         solve_torso(0.25f);
     solve_all_limbs();
+
+    cl.mode = CLIMBER_CLIMBING;
+    cl.mounted = true;
+    return true;
+}
+
+static void enter_on_foot(void) {
+    cl.mode = CLIMBER_ON_FOOT;
+    cl.active = LIMB_NONE;
+    /* Keep facing where the wall was; walking recomputes the frame. */
+    cl.yaw = atan2f(cl.fwd[0], cl.fwd[2]);
+    for (int l = 0; l < LIMB_COUNT; l++)
+        cl.limbs[l].grip = -1;
+    gait = 0.f;
+    walk_sm = 0.f;
+    cl.dismounted = true;
+}
+
+/* Standing pose: torso upright over the ground, feet stepping with the
+ * gait phase, arms hanging with a slight counter-swing. speed 0..1. */
+static void walk_pose(float speed) {
+    float gn[3];
+    float gh = mountain_surface(cl.hip[0], cl.hip[2], gn);
+
+    v3_set(cl.fwd, sinf(cl.yaw), 0.f, cosf(cl.yaw));
+    v3_scale(cl.wall_n, cl.fwd, -1.f);
+    float up0[3];
+    v3_copy(up0, WORLD_UP);
+    v3_mad(up0, gn, 0.3f);   /* lean slightly with the ground */
+    v3_norm(up0);
+    v3_cross(cl.right, up0, cl.fwd);
+    if (v3_norm(cl.right) < 1e-5f)
+        v3_set(cl.right, 1.f, 0.f, 0.f);
+    v3_cross(cl.up, cl.fwd, cl.right);
+    v3_norm(cl.up);
+
+    cl.hip[1] = gh + STAND_H + 0.025f * sinf(gait * 2.f) * speed;
+    place_roots();
+
+    for (int l = 0; l < LIMB_COUNT; l++) {
+        climber_limb_t *lb = &cl.limbs[l];
+        float pole[3];
+        if (limb_is_arm((limb_id_t)l)) {
+            /* Arms hang, counter-swinging the same-side leg. */
+            float ph = gait + ((limb_id_t)l == LIMB_ARM_R ? 0.f : (float)M_PI);
+            v3_copy(lb->tip, lb->root);
+            v3_mad(lb->tip, cl.up, -(CL_ARM_UPPER + CL_ARM_LOWER) * 0.78f);
+            v3_mad(lb->tip, cl.right, limb_side((limb_id_t)l) * 0.05f);
+            v3_mad(lb->tip, cl.fwd, -sinf(ph) * 0.14f * speed);
+            v3_scale(pole, cl.fwd, -1.f);           /* elbows point back */
+            v3_mad(pole, cl.up, -0.4f);
+        } else {
+            float ph = gait + ((limb_id_t)l == LIMB_LEG_R ? (float)M_PI : 0.f);
+            float step = sinf(ph) * 0.30f * speed;
+            float lift = fmaxf(0.f, cosf(ph)) * 0.13f * speed;
+            v3_copy(lb->tip, lb->root);
+            v3_mad(lb->tip, cl.fwd, step);
+            surface_stick(lb->tip);
+            lb->tip[1] += lift;
+            v3_copy(pole, cl.fwd);                  /* knees point forward */
+            v3_mad(pole, cl.up, 0.2f);
+        }
+        solve_limb(lb, limb_upper((limb_id_t)l), limb_lower((limb_id_t)l), pole);
+    }
+    cl.alt = cl.hip[1];
+}
+
+static void walk_update(const input_state_t *in, float cam_yaw, float dt) {
+    float mx = 0.f, mz = 0.f;
+    if (!in->z_held) {   /* Z held: the stick is steering the camera */
+        float fx = -sinf(cam_yaw), fz = -cosf(cam_yaw);
+        float rx =  cosf(cam_yaw), rz = -sinf(cam_yaw);
+        mx = rx * in->stick_x + fx * in->stick_y;
+        mz = rz * in->stick_x + fz * in->stick_y;
+    }
+    float m = sqrtf(mx * mx + mz * mz);
+    if (m > 1.f) {
+        mx /= m; mz /= m;
+        m = 1.f;
+    }
+
+    if (m > 0.08f) {
+        float nx = cl.hip[0] + mx * WALK_SPEED * dt;
+        float nz = cl.hip[2] + mz * WALK_SPEED * dt;
+        if (nx < -MTN_HALF + 1.f) nx = -MTN_HALF + 1.f;
+        if (nx >  MTN_HALF - 1.f) nx =  MTN_HALF - 1.f;
+        if (nz < -MTN_HALF + 1.f) nz = -MTN_HALF + 1.f;
+        if (nz >  MTN_HALF - 1.f) nz =  MTN_HALF - 1.f;
+
+        float gn[3];
+        mountain_surface(nx, nz, gn);
+        if (gn[1] >= WALK_SLOPE_MIN) {   /* too steep to walk = a wall */
+            cl.hip[0] = nx;
+            cl.hip[2] = nz;
+        }
+
+        /* Turn toward the movement direction (shortest way around). */
+        float want = atan2f(mx, mz);
+        float diff = fmodf(want - cl.yaw + 3.f * (float)M_PI, 2.f * (float)M_PI)
+                   - (float)M_PI;
+        float turn = 10.f * dt;
+        if (turn > 1.f) turn = 1.f;
+        cl.yaw += diff * turn;
+
+        gait += m * 7.f * dt;
+    }
+
+    float t = 8.f * dt;
+    if (t > 1.f) t = 1.f;
+    walk_sm += (m - walk_sm) * t;
+    walk_pose(walk_sm);
+
+    /* Hold a C button facing a gripped wall to grab on. */
+    if (in->limb != LIMB_NONE) {
+        float probe[3];
+        v3_copy(probe, cl.neck);
+        v3_mad(probe, cl.fwd, 0.55f);
+        mount_wall(probe);
+    }
+}
+
+void climber_update(const input_state_t *in, float cam_yaw, float dt) {
+    cl.snapped = cl.snap_failed = cl.mounted = cl.dismounted = false;
+
+    if (cl.mode == CLIMBER_ON_FOOT) {
+        cl.active = LIMB_NONE;
+        walk_update(in, cam_yaw, dt);
+        return;
+    }
+
+    /* A change of held C button snaps the old limb first — input.c only
+     * raises limb_released when every C button is up. */
+    if (cl.active != LIMB_NONE && in->limb != cl.active)
+        snap_limb(cl.active);
+    cl.active = in->limb;
+
+    if (cl.active != LIMB_NONE) {
+        climber_limb_t *lb = &cl.limbs[cl.active];
+        if (lb->grip >= 0) {
+            prev_grip[cl.active] = lb->grip;
+            lb->grip = -1;
+        }
+        steer_tip(lb, cl.active, in, dt);
+    }
+
+    solve_torso(dt);
+    solve_all_limbs();
+
+    /* R with no limb held: step off, if there's walkable ground under
+     * the hips within standing distance (base of the wall, ledges,
+     * bench tops between cliff bands). */
+    if (cl.active == LIMB_NONE && in->rest) {
+        float gn[3];
+        float gh = mountain_surface(cl.hip[0], cl.hip[2], gn);
+        if (gn[1] >= WALK_SLOPE_MIN && cl.hip[1] - gh < DISMOUNT_H)
+            enter_on_foot();
+    }
+}
+
+const climber_t *climber_state(void) {
+    return &cl;
+}
+
+/* Boot placement: a low grip with company to stand on and — the part
+ * that matters — a tall column of holds overhead. The lowest crag is
+ * often a 3m boulder that tops out onto a walkable bench, stranding
+ * the climber; score candidates by route length instead. */
+static bool start_candidate(int i, float y_cap) {
+    const grip_t *g = grip_get(i);
+    if (g->pos[1] >= y_cap)
+        return false;
+    int near[24];
+    int n = grips_collect(g->pos, 1.8f, near, 24);
+    int above = 0;
+    for (int k = 0; k < n; k++)
+        if (grip_get(near[k])->pos[1] > g->pos[1] + 0.5f)
+            above++;
+    return n >= 5 && above >= 2;
+}
+
+static int find_start_grip(void) {
+    float y_cap = 60.f;
+    for (int tries = 0; tries < 3; tries++, y_cap *= 2.f) {
+        /* Pass 1: the best route length any low candidate offers. */
+        int best_score = -1;
+        for (int i = 0; i < grips_count(); i += 3) {
+            if (!start_candidate(i, y_cap))
+                continue;
+            int score = grips_column(grip_get(i)->pos, 5.f, 45.f);
+            if (score > best_score)
+                best_score = score;
+        }
+        if (best_score < 0)
+            continue;
+        /* Pass 2: the LOWEST candidate still offering most of that —
+         * "the base of the mountain", not the best bench mid-face. */
+        int thresh = best_score * 3 / 5;
+        int best = -1;
+        float best_y = 1e9f;
+        for (int i = 0; i < grips_count(); i += 3) {
+            const grip_t *g = grip_get(i);
+            if (g->pos[1] >= best_y || !start_candidate(i, y_cap))
+                continue;
+            if (grips_column(g->pos, 5.f, 45.f) >= thresh) {
+                best = i;
+                best_y = g->pos[1];
+            }
+        }
+        if (best >= 0)
+            return best;
+    }
+    return 0;
+}
+
+void climber_init(void) {
+    cl = (climber_t){ .active = LIMB_NONE };
+    gait = 0.f;
+    walk_sm = 0.f;
+    for (int l = 0; l < LIMB_COUNT; l++) {
+        cl.limbs[l].grip = -1;
+        prev_grip[l] = 0;
+    }
+
+    const grip_t *s = grip_get(find_start_grip());
+
+    /* Spawn on foot: step outward from the route's base hold along its
+     * face normal until the ground flattens to walkable, and face the
+     * wall. The player walks up and grabs on with a C button. */
+    float out[3] = { s->n[0], 0.f, s->n[2] };
+    if (v3_norm(out) < 1e-5f)
+        v3_set(out, 0.f, 0.f, 1.f);
+
+    bool placed = false;
+    for (float t = 0.8f; t <= 9.f; t += 0.5f) {
+        float p[3];
+        v3_copy(p, s->pos);
+        v3_mad(p, out, t);
+        float gn[3];
+        mountain_surface(p[0], p[2], gn);
+        if (gn[1] >= 0.80f) {
+            /* A touch further out so the approach reads on camera. */
+            float p2[3];
+            v3_copy(p2, p);
+            v3_mad(p2, out, 1.2f);
+            float gn2[3];
+            mountain_surface(p2[0], p2[2], gn2);
+            if (gn2[1] >= 0.80f)
+                v3_copy(p, p2);
+
+            cl.mode = CLIMBER_ON_FOOT;
+            cl.hip[0] = p[0];
+            cl.hip[2] = p[2];
+            cl.yaw = atan2f(-out[0], -out[2]);   /* face the wall */
+            walk_pose(0.f);
+            placed = true;
+            break;
+        }
+    }
+
+    if (!placed) {
+        /* No walkable apron by this face — start latched on instead. */
+        mount_wall(s->pos);
+        cl.mounted = false;
+    }
+    cl.dismounted = false;
 }

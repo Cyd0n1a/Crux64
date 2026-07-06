@@ -126,9 +126,9 @@ static void draw_hud(const render_hud_t *hud) {
                      "gen %.0fms  grips %d  chunks %d/%d  fps %.1f",
                      hud->gen_ms, hud->grip_count, chunks_drawn, NUM_CHUNKS,
                      display_get_fps());
-    if (hud->limb)
+    if (hud->status)
         rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 204,
-                         "MOVING: %s", hud->limb);
+                         "%s", hud->status);
     rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 216,
                      "ALT %dm%s", (int)hud->climber_alt,
                      hud->rumble_ok ? "" : "   INSERT RUMBLE PAK");
