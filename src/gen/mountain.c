@@ -87,6 +87,44 @@ uint32_t mountain_color_at(int ix, int iz) {
     return (r << 24) | (g << 16) | (b << 8) | 0xFF;
 }
 
+float mountain_surface(float x, float z, float out_n[3]) {
+    float gx = (x + MTN_HALF) / MTN_CELL_SIZE;
+    float gz = (z + MTN_HALF) / MTN_CELL_SIZE;
+    gx = clampf(gx, 0.f, (float)MTN_CELLS - 0.001f);
+    gz = clampf(gz, 0.f, (float)MTN_CELLS - 0.001f);
+
+    int ix = (int)gx, iz = (int)gz;
+    float fx = gx - ix, fz = gz - iz;
+
+    float h00 = mountain_height_at(ix,     iz);
+    float h10 = mountain_height_at(ix + 1, iz);
+    float h01 = mountain_height_at(ix,     iz + 1);
+    float h11 = mountain_height_at(ix + 1, iz + 1);
+
+    /* Renderer splits each cell into (i00,i01,i11) and (i00,i11,i10);
+     * the first covers fz >= fx. Plane gradients per triangle: */
+    float dhx, dhz, h;
+    if (fz >= fx) {
+        dhx = h11 - h01;
+        dhz = h01 - h00;
+        h   = h00 + dhz * fz + dhx * fx;
+    } else {
+        dhx = h10 - h00;
+        dhz = h11 - h10;
+        h   = h00 + dhx * fx + dhz * fz;
+    }
+
+    if (out_n) {
+        float sx = dhx / MTN_CELL_SIZE;
+        float sz = dhz / MTN_CELL_SIZE;
+        float len = sqrtf(sx * sx + 1.f + sz * sz);
+        out_n[0] = -sx / len;
+        out_n[1] =  1.f / len;
+        out_n[2] = -sz / len;
+    }
+    return h;
+}
+
 float mountain_height(float x, float z) {
     float gx = (x + MTN_HALF) / MTN_CELL_SIZE;
     float gz = (z + MTN_HALF) / MTN_CELL_SIZE;

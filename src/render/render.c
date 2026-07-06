@@ -3,6 +3,7 @@
 #include <math.h>
 
 #include "render.h"
+#include "climber_render.h"
 #include "../gen/mountain.h"
 #include "../version.h"
 
@@ -11,9 +12,11 @@
 #define SKY_COLOR   RGBA32(114, 128, 156, 0xFF)
 #define FOG_NEAR    160.f
 #define FOG_FAR     430.f
+/* Near plane hugs the climber close-up; far stays past the fog wall.
+ * 16-bit Z at this ratio is tight but the fog hides distant fighting. */
 #define CAM_FOV     T3D_DEG_TO_RAD(65.f)
-#define CAM_NEAR    8.f
-#define CAM_FAR     540.f
+#define CAM_NEAR    1.2f
+#define CAM_FAR     500.f
 
 #define NUM_CHUNKS    (MTN_CHUNKS * MTN_CHUNKS)
 #define CHUNK_VCOUNT  (MTN_CHUNK_VERTS * MTN_CHUNK_VERTS)   /* 64 <= 70 cache */
@@ -109,6 +112,8 @@ void render_init(void) {
         for (int cx = 0; cx < MTN_CHUNKS; cx++)
             build_chunk(cx, cz);
 
+    climber_render_init();
+
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(FONT_BUILTIN_DEBUG_MONO, font);
 }
@@ -118,11 +123,14 @@ static void draw_hud(const render_hud_t *hud) {
                      "CRUX64 %s  seed 0x%08lX", CRUX64_VERSION,
                      (unsigned long)MTN_SEED);
     rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 34,
-                     "gen %.0fms  chunks %d/%d  fps %.1f",
-                     hud->gen_ms, chunks_drawn, NUM_CHUNKS,
+                     "gen %.0fms  grips %d  chunks %d/%d  fps %.1f",
+                     hud->gen_ms, hud->grip_count, chunks_drawn, NUM_CHUNKS,
                      display_get_fps());
+    if (hud->limb)
+        rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 204,
+                         "MOVING: %s", hud->limb);
     rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 216,
-                     "ALT %dm%s", (int)hud->cam_alt,
+                     "ALT %dm%s", (int)hud->climber_alt,
                      hud->rumble_ok ? "" : "   INSERT RUMBLE PAK");
 }
 
@@ -178,6 +186,8 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
         chunks_drawn++;
     }
     t3d_matrix_pop(1);
+
+    climber_render_draw();
 
     draw_hud(hud);
 

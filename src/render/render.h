@@ -4,8 +4,10 @@
 
 typedef struct {
     float gen_ms;        /* boot-time mountain generation cost */
-    float cam_alt;
+    float climber_alt;
     bool  rumble_ok;
+    const char *limb;    /* selected limb name, NULL when none held */
+    int   grip_count;
 } render_hud_t;
 
 void render_init(void);

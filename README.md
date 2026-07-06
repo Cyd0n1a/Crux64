@@ -43,7 +43,9 @@ hardware via a flashcart.
 
 - [x] Phase 1 — core setup, joypad subsystem, Rumble Pak mapping, Tiny3D bring-up
 - [x] Phase 2 — fixed-seed Simplex noise mountain → Tiny3D mesh
-- [ ] Phase 3 — stick-figure IK + limb snapping
+- [x] Phase 3 — stick-figure IK + limb snapping
+      (hold a C button to steer that limb along the rock; release to
+      catch the pulsing green hold; grips generate on all 45°+ faces)
 - [ ] Phase 4 — posture, balance, stamina
 - [ ] Phase 5 — audio (minimp3 music + procedural DSP SFX)
 - [ ] Phase 6 — EEPROM saves, polish, optimization

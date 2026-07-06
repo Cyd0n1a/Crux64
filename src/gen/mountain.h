@@ -28,3 +28,8 @@ uint32_t mountain_color_at(int ix, int iz);              /* 0xRRGGBBAA */
 
 /* Bilinear world-space sample; 0 outside the footprint. */
 float mountain_height(float x, float z);
+
+/* Mesh-exact world-space sample: evaluates the triangle the renderer
+ * actually draws (cells split i00-i01-i11 / i00-i11-i10), so grips and
+ * limb tips sit flush on the visible surface. out_n may be NULL. */
+float mountain_surface(float x, float z, float out_n[3]);
