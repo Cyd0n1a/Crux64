@@ -1,4 +1,5 @@
 #include "climber.h"
+#include "campsite.h"
 #include "vec3.h"
 #include "../gen/mountain.h"
 #include "../gen/grips.h"
@@ -439,6 +440,23 @@ static void walk_update(const input_state_t *in, float cam_yaw, float dt) {
             cl.hip[2] = nz;
         }
 
+        /* Don't walk through camp: slide out of the fire pit and tent. */
+        const campsite_t *camp = campsite_get();
+        if (camp->valid) {
+            const float *ob[2] = { camp->fire, camp->tent };
+            const float  r[2]  = { 0.55f, 1.25f };
+            for (int i = 0; i < 2; i++) {
+                float dx = cl.hip[0] - ob[i][0];
+                float dz = cl.hip[2] - ob[i][2];
+                float d2 = dx * dx + dz * dz;
+                if (d2 < r[i] * r[i] && d2 > 1e-6f) {
+                    float s = r[i] / sqrtf(d2);
+                    cl.hip[0] = ob[i][0] + dx * s;
+                    cl.hip[2] = ob[i][2] + dz * s;
+                }
+            }
+        }
+
         /* Turn toward the movement direction (shortest way around). */
         float want = atan2f(mx, mz);
         float diff = fmodf(want - cl.yaw + 3.f * (float)M_PI, 2.f * (float)M_PI)
@@ -568,15 +586,26 @@ void climber_init(void) {
 
     const grip_t *s = grip_get(find_start_grip());
 
-    /* Spawn on foot: step outward from the route's base hold along its
-     * face normal until the ground flattens to walkable, and face the
-     * wall. The player walks up and grabs on with a C button. */
+    /* Spawn on foot at base camp: a tent and campfire pitched on flat
+     * ground well back from the route's first hold, the climber stood
+     * beside the fire facing the wall. The approach is the walk in. */
     float out[3] = { s->n[0], 0.f, s->n[2] };
     if (v3_norm(out) < 1e-5f)
         v3_set(out, 0.f, 0.f, 1.f);
 
-    bool placed = false;
-    for (float t = 0.8f; t <= 9.f; t += 0.5f) {
+    bool placed = campsite_place(s->pos, out);
+    if (placed) {
+        const campsite_t *camp = campsite_get();
+        cl.mode = CLIMBER_ON_FOOT;
+        cl.hip[0] = camp->spawn[0];
+        cl.hip[2] = camp->spawn[2];
+        cl.yaw = camp->spawn_yaw;
+        walk_pose(0.f);
+    }
+
+    /* No room for a camp on this apron: the old close-in spawn — step
+     * outward from the base hold until the ground turns walkable. */
+    for (float t = 0.8f; !placed && t <= 9.f; t += 0.5f) {
         float p[3];
         v3_copy(p, s->pos);
         v3_mad(p, out, t);

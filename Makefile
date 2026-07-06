@@ -16,8 +16,10 @@ OBJS = \
     $(BUILD_DIR)/src/gen/mountain.o \
     $(BUILD_DIR)/src/gen/grips.o \
     $(BUILD_DIR)/src/sim/climber.o \
+    $(BUILD_DIR)/src/sim/campsite.o \
     $(BUILD_DIR)/src/render/render.o \
-    $(BUILD_DIR)/src/render/climber_render.o
+    $(BUILD_DIR)/src/render/climber_render.o \
+    $(BUILD_DIR)/src/render/campsite_render.o
 
 crux64.z64: $(BUILD_DIR)/crux64.elf
 $(BUILD_DIR)/crux64.elf: $(OBJS)

@@ -17,7 +17,8 @@ See [Crux64_GDD.md](Crux64_GDD.md) for the full design document.
 
 ## Controls (GDD 2.4)
 
-You start on foot at the base of the mountain.
+You start on foot at base camp — a tent and campfire pitched on the
+apron below the first pitch. Walk in to the wall and grab on.
 
 **On foot**
 
@@ -60,9 +61,10 @@ hardware via a flashcart.
 - [x] Phase 3 — stick-figure IK + limb snapping
       (hold a C button to steer that limb along the rock; release to
       catch the pulsing green hold; grips generate on all 45°+ faces)
-- [x] Phase 3.5 — on-foot mode: spawn at the mountain's base, walk the
-      aprons and benches, grab on and step off anywhere walkable meets
-      climbable
+- [x] Phase 3.5 — on-foot mode: spawn at a procedurally pitched base
+      camp (tent, stone fire ring, animated campfire casting real
+      point light), walk the aprons and benches, grab on and step off
+      anywhere walkable meets climbable
 - [ ] Phase 4 — posture, balance, stamina
 - [ ] Phase 5 — audio (minimp3 music + procedural DSP SFX)
 - [ ] Phase 6 — EEPROM saves, polish, optimization

@@ -4,7 +4,9 @@
 
 #include "render.h"
 #include "climber_render.h"
+#include "campsite_render.h"
 #include "../gen/mountain.h"
+#include "../sim/campsite.h"
 #include "../version.h"
 
 /* Pre-dawn alpine sky; fog fades terrain into the same tint so the
@@ -113,6 +115,7 @@ void render_init(void) {
             build_chunk(cx, cz);
 
     climber_render_init();
+    campsite_render_init();
 
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(FONT_BUILTIN_DEBUG_MONO, font);
@@ -158,7 +161,22 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     T3DVec3 sun_dir = {{ 0.48f, 0.62f, 0.34f }};
     t3d_vec3_norm(&sun_dir);
     t3d_light_set_directional(0, (uint8_t[]){ 255, 235, 200, 0xFF }, &sun_dir);
-    t3d_light_set_count(1);
+
+    /* The campfire casts flickering warm light onto the terrain, tent
+     * and climber (point light positions are world-space in tiny3d). */
+    const campsite_t *camp = campsite_get();
+    int nlights = 1;
+    if (camp->valid) {
+        float tf = (float)((double)get_ticks_us() * 1e-6);
+        float fl = 0.70f + 0.20f * sinf(tf * 11.3f)
+                         + 0.10f * sinf(tf * 26.7f + 1.7f);
+        uint8_t fc[4] = { (uint8_t)(250.f * fl), (uint8_t)(148.f * fl),
+                          (uint8_t)(52.f * fl), 0xFF };
+        T3DVec3 fpos = {{ camp->fire[0], camp->fire[1] + 0.55f, camp->fire[2] }};
+        t3d_light_set_point(1, fc, &fpos, 8.f + 2.f * fl, false);
+        nlights = 2;
+    }
+    t3d_light_set_count(nlights);
 
     t3d_state_set_drawflags(T3D_FLAG_SHADED | T3D_FLAG_DEPTH | T3D_FLAG_CULL_BACK);
 
@@ -188,6 +206,7 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     t3d_matrix_pop(1);
 
     climber_render_draw();
+    campsite_render_draw();
 
     draw_hud(hud);
 
