@@ -42,7 +42,7 @@ hardware via a flashcart.
 ## Status
 
 - [x] Phase 1 — core setup, joypad subsystem, Rumble Pak mapping, Tiny3D bring-up
-- [ ] Phase 2 — fixed-seed Simplex noise mountain → Tiny3D mesh
+- [x] Phase 2 — fixed-seed Simplex noise mountain → Tiny3D mesh
 - [ ] Phase 3 — stick-figure IK + limb snapping
 - [ ] Phase 4 — posture, balance, stamina
 - [ ] Phase 5 — audio (minimp3 music + procedural DSP SFX)

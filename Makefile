@@ -11,7 +11,10 @@ all: crux64.z64
 OBJS = \
     $(BUILD_DIR)/src/main.o \
     $(BUILD_DIR)/src/input/input.o \
-    $(BUILD_DIR)/src/input/rumble.o
+    $(BUILD_DIR)/src/input/rumble.o \
+    $(BUILD_DIR)/src/gen/noise.o \
+    $(BUILD_DIR)/src/gen/mountain.o \
+    $(BUILD_DIR)/src/render/render.o
 
 crux64.z64: $(BUILD_DIR)/crux64.elf
 $(BUILD_DIR)/crux64.elf: $(OBJS)
