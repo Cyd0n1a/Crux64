@@ -88,3 +88,11 @@ hardware via a flashcart.
       total play time persist across power-offs in a single 8-byte
       eepromfs block (recorded in RAM, flushed only at rest points); the
       title screen shows your saved best
+
+### Polish
+
+- [x] Music — composed MP3 loops (a title theme and an in-game theme)
+      streamed off the cartridge and decoded live with minimp3, mixed
+      under the procedural wind/heartbeat/SFX. The in-game track is
+      larger than RAM, so it streams from the ROM filesystem; the drone
+      bed steps aside whenever a track is playing

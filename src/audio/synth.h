@@ -8,11 +8,12 @@
  * modulated by gameplay state; one-shot SFX fire on climbing events.
  *
  * The GDD earmarks minimp3 for a composed background loop as its sole
- * authored-asset exception; until such a track exists the drone bed
- * stands in for it, and real music can later be mixed into the same
- * output buffer. Runs at 22kHz mono (GDD: downsample to spare CPU),
- * duplicated to both channels. A sine LUT keeps the per-sample cost off
- * the FPU so the heavy continuous synthesis fits inside a 30fps frame. */
+ * authored-asset exception; that track now exists (src/audio/music.c),
+ * and its decoded PCM is mixed straight into this output buffer, so the
+ * drone bed drops out whenever real music is playing and only covers for
+ * a missing filesystem. Runs at 22kHz (GDD: downsample to spare CPU); the
+ * diegetic layers are mono, the music stereo. A sine LUT keeps the
+ * per-sample cost off the FPU so the synthesis fits inside a 30fps frame. */
 
 void synth_init(void);
 void synth_poll(void);      /* fill pending audio buffers; call once/frame */

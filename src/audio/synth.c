@@ -1,7 +1,12 @@
 #include "synth.h"
+#include "music.h"
 #include <libdragon.h>
 #include <math.h>
 #include <string.h>
+
+/* How loud the streamed MP3 sits under the diegetic layers. Leaves headroom
+ * for the wind, heartbeat and event SFX, which are clamped in on top. */
+#define MUSIC_GAIN 0.62f
 
 /* GDD 3.3: 22kHz mono keeps a big margin of CPU for the sim while the
  * continuous layers run every sample. Output is duplicated L=R. */
@@ -192,6 +197,11 @@ static const float pad_freq[4] = { 55.00f, 65.41f, 82.41f, 110.00f };  /* A mino
 static float hb_clock, hb_env, hb_ph;
 
 static void render(short *buf, int nframes) {
+    /* Real music now owns the "bed" role the drone was standing in for;
+     * silence the drone whenever a track is streaming (GDD 3.3). If the
+     * filesystem never mounted, music is inactive and the drone carries on. */
+    float pad_gate = music_active() ? 0.f : 1.f;
+
     for (int i = 0; i < nframes; i++) {
         /* Slew continuous controls (~per-sample, tuned for a soft glide). */
         alt_cur  += (alt_tgt  - alt_cur)  * 0.0008f;
@@ -221,7 +231,7 @@ static void render(short *buf, int nframes) {
             pad += lut_sin(pad_ph[p]);
         }
         /* Bed ducks under a fall so the wind rush dominates. */
-        sample += pad * 0.018f * trem * (1.f - 0.7f * fall_cur);
+        sample += pad * 0.018f * trem * (1.f - 0.7f * fall_cur) * pad_gate;
 
         /* --- heartbeat --- */
         if (str_cur > 0.33f) {
@@ -274,9 +284,14 @@ static void render(short *buf, int nframes) {
         }
 
         sample = clampf(sample, -1.f, 1.f);
-        short s = (short)(sample * 26000.f);
-        buf[i * 2]     = s;
-        buf[i * 2 + 1] = s;
+
+        /* Fold in the streamed MP3 (stereo), diegetic layers centred on top. */
+        float ml, mr;
+        music_sample(&ml, &mr);
+        float outL = clampf(sample + ml * MUSIC_GAIN, -1.f, 1.f);
+        float outR = clampf(sample + mr * MUSIC_GAIN, -1.f, 1.f);
+        buf[i * 2]     = (short)(outL * 26000.f);
+        buf[i * 2 + 1] = (short)(outR * 26000.f);
     }
 }
 

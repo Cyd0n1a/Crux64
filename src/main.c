@@ -14,10 +14,17 @@
  * flushed only at rest points (piton checkpoints, the end of a fall).
  * The title screen shows the saved best.
  *
+ * Music (GDD 3.3): the drone bed's planned replacement is here — two
+ * composed MP3s (a title loop and an in-game loop) stream off the
+ * cartridge and are decoded by minimp3 (src/audio/music.c), mixed live
+ * into the synth buffer. The in-game track is bigger than RAM, so it
+ * streams from the ROM filesystem rather than loading; each loops on
+ * end-of-file, and the drone bed steps aside while music plays.
+ *
  * Phase 5 (GDD 5.5): procedural audio. Every sound is synthesized live
  * (src/audio/synth.c) — no sampled assets. Wind howls fiercer with
- * altitude, a low drone bed stands in for the planned minimp3 track, a
- * heartbeat quickens as the weakest grip fails (locked to the rumble),
+ * altitude, a heartbeat quickens as the weakest grip fails (locked to
+ * the rumble),
  * and one-shots fire on events: brown-noise placements, a metallic
  * piton strike, body-thud landings, and pitch-bent exertion grunts that
  * rasp harder the closer the climber is to peeling off.
@@ -40,6 +47,7 @@
 #include "input/input.h"
 #include "input/rumble.h"
 #include "audio/synth.h"
+#include "audio/music.h"
 #include "gen/mountain.h"
 #include "gen/grips.h"
 #include "sim/climber.h"
@@ -61,6 +69,10 @@ int main(void) {
     rumble_init();
     synth_init();
     save_init();
+    /* Mount the ROM filesystem and cue the title loop. If the FS can't be
+     * found, music stays silent and the synth's drone bed covers ambience. */
+    music_init();
+    music_play(MUSIC_TITLE);
     t3d_init((T3DInitParams){});
 
     long long gen_start = timer_ticks();
@@ -108,6 +120,7 @@ int main(void) {
                 in_title = false;
                 rumble_kick(0.4f, 0.2f);
                 synth_chalk();
+                music_play(MUSIC_GAME);   /* swap the title loop for the climb */
             }
             rumble_update(dt);
 
