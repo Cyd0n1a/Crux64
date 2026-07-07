@@ -17,6 +17,9 @@ See [Crux64_GDD.md](Crux64_GDD.md) for the full design document.
 
 ## Controls (GDD 2.4)
 
+The title screen orbits the whole massif with the CRUX64 logo spelled
+out in rainbow-rippling cubes — press **Start** to begin.
+
 You start on foot at base camp — a tent and campfire pitched on the
 apron below the first pitch. Walk in to the wall and grab on.
 
@@ -64,7 +67,8 @@ hardware via a flashcart.
 - [x] Phase 3.5 — on-foot mode: spawn at a procedurally pitched base
       camp (tent, stone fire ring, animated campfire casting real
       point light), walk the aprons and benches, grab on and step off
-      anywhere walkable meets climbable
+      anywhere walkable meets climbable; title screen with a slow
+      orbit of the massif and a waving rainbow cube-letter logo
 - [ ] Phase 4 — posture, balance, stamina
 - [ ] Phase 5 — audio (minimp3 music + procedural DSP SFX)
 - [ ] Phase 6 — EEPROM saves, polish, optimization

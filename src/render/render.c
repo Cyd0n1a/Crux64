@@ -5,6 +5,7 @@
 #include "render.h"
 #include "climber_render.h"
 #include "campsite_render.h"
+#include "title_render.h"
 #include "../gen/mountain.h"
 #include "../sim/campsite.h"
 #include "../version.h"
@@ -19,6 +20,13 @@
 #define CAM_FOV     T3D_DEG_TO_RAD(65.f)
 #define CAM_NEAR    1.2f
 #define CAM_FAR     500.f
+/* Title screen: the orbit camera sits ~360m out, so push the fog wall
+ * past the far rim of the massif; the near plane relaxes too (nothing
+ * sits closer than the cube logo at 10m). */
+#define TITLE_NEAR      3.f
+#define TITLE_FAR       950.f
+#define TITLE_FOG_NEAR  520.f
+#define TITLE_FOG_FAR   900.f
 
 #define NUM_CHUNKS    (MTN_CHUNKS * MTN_CHUNKS)
 #define CHUNK_VCOUNT  (MTN_CHUNK_VERTS * MTN_CHUNK_VERTS)   /* 64 <= 70 cache */
@@ -116,6 +124,7 @@ void render_init(void) {
 
     climber_render_init();
     campsite_render_init();
+    title_render_init();
 
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(FONT_BUILTIN_DEBUG_MONO, font);
@@ -137,9 +146,26 @@ static void draw_hud(const render_hud_t *hud) {
                      hud->rumble_ok ? "" : "   INSERT RUMBLE PAK");
 }
 
+static void draw_title_hud(const render_hud_t *hud) {
+    float t = (float)((double)get_ticks_us() * 1e-6);
+    if (fmodf(t, 1.1f) < 0.75f)
+        rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 116, 176,
+                         "PRESS START");
+    rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 204,
+                     "CRUX64 %s%s", CRUX64_VERSION,
+                     hud->rumble_ok ? "" : "   INSERT RUMBLE PAK");
+    rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 216,
+                     "(c) 2026 Cydonis Heavy Industries");
+}
+
 void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
                   const render_hud_t *hud) {
-    t3d_viewport_set_projection(&viewport, CAM_FOV, CAM_NEAR, CAM_FAR);
+    float cam_near = hud->title ? TITLE_NEAR     : CAM_NEAR;
+    float cam_far  = hud->title ? TITLE_FAR      : CAM_FAR;
+    float fog_near = hud->title ? TITLE_FOG_NEAR : FOG_NEAR;
+    float fog_far  = hud->title ? TITLE_FOG_FAR  : FOG_FAR;
+
+    t3d_viewport_set_projection(&viewport, CAM_FOV, cam_near, cam_far);
     t3d_viewport_look_at(&viewport, eye, target, &(T3DVec3){{ 0, 1, 0 }});
 
     rdpq_attach(display_get(), &zbuf);
@@ -153,7 +179,7 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     t3d_screen_clear_color(SKY_COLOR);
     t3d_screen_clear_depth();
 
-    t3d_fog_set_range(FOG_NEAR, FOG_FAR);
+    t3d_fog_set_range(fog_near, fog_far);
     t3d_fog_set_enabled(true);
 
     /* Low warm sun + cool skylight ambient (GDD 3.1). */
@@ -185,7 +211,7 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
                      target->v[1] - eye->v[1],
                      target->v[2] - eye->v[2] }};
     t3d_vec3_norm(&fwd);
-    float max_dist = FOG_FAR;
+    float max_dist = fog_far;
 
     chunks_drawn = 0;
     t3d_matrix_push(model_mat);
@@ -208,7 +234,12 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     climber_render_draw();
     campsite_render_draw();
 
-    draw_hud(hud);
+    if (hud->title) {
+        title_render_draw(eye, target);
+        draw_title_hud(hud);
+    } else {
+        draw_hud(hud);
+    }
 
     rdpq_detach_show();
 }

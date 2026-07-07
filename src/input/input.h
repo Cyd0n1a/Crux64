@@ -28,6 +28,7 @@ typedef struct {
     bool  z_held;          /* Z held: on foot, stick becomes camera */
     bool  rest;            /* R pressed this frame */
     bool  chalk;           /* A pressed this frame */
+    bool  start_btn;       /* Start pressed this frame (title screen) */
 
     int8_t cam_x;          /* D-pad free-look: -1/0/1 per axis */
     int8_t cam_y;

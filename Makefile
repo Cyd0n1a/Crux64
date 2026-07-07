@@ -19,7 +19,8 @@ OBJS = \
     $(BUILD_DIR)/src/sim/campsite.o \
     $(BUILD_DIR)/src/render/render.o \
     $(BUILD_DIR)/src/render/climber_render.o \
-    $(BUILD_DIR)/src/render/campsite_render.o
+    $(BUILD_DIR)/src/render/campsite_render.o \
+    $(BUILD_DIR)/src/render/title_render.o
 
 crux64.z64: $(BUILD_DIR)/crux64.elf
 $(BUILD_DIR)/crux64.elf: $(OBJS)

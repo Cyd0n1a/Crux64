@@ -8,6 +8,7 @@ typedef struct {
     bool  rumble_ok;
     const char *status;  /* mode/limb line, NULL to hide */
     int   grip_count;
+    bool  title;         /* title screen: far fog, cube logo, no HUD */
 } render_hud_t;
 
 void render_init(void);

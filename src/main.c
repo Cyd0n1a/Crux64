@@ -59,6 +59,13 @@ int main(void) {
     float cam_pitch = 0.25f;
     const float cam_dist = 5.6f;
 
+    /* Title screen: a slow right-to-left orbit around the whole massif
+     * (camera strafes right, so the mountain drifts leftward on screen)
+     * with the cube-letter logo floating in front. Start drops the
+     * player into the run at base camp. */
+    bool  in_title  = true;
+    float title_ang = 0.f;
+
     long long prev = timer_ticks();
 
     while (1) {
@@ -69,6 +76,26 @@ int main(void) {
 
         input_poll();
         const input_state_t *in = input_state();
+
+        if (in_title) {
+            title_ang += dt * 0.10f;
+            T3DVec3 target = {{ 0.f, 105.f, 0.f }};
+            T3DVec3 eye = {{ sinf(title_ang) * 360.f, 170.f,
+                             cosf(title_ang) * 360.f }};
+            if (in->start_btn) {
+                in_title = false;
+                rumble_kick(0.4f, 0.2f);
+            }
+            rumble_update(dt);
+
+            render_hud_t hud = {
+                .title     = true,
+                .rumble_ok = in->rumble_present,
+                .status    = NULL,
+            };
+            render_frame(&eye, &target, &hud);
+            continue;
+        }
 
         climber_update(in, cam_yaw, dt);
 
