@@ -14,9 +14,9 @@
  * silhouettes; steps=3 on the last makes it a touch bushier. */
 static const struct { int seed, seg, lvl, steps; float twig; }
 TREE_PARAM[SCAT_TREE_VARIANTS] = {
-    { 262, 4, 2, 2, 0.50f },
-    {   7, 4, 2, 2, 0.52f },
-    {  99, 4, 2, 3, 0.46f },
+    { 262, 4, 2, 2, 0.40f },
+    {   7, 4, 2, 2, 0.42f },
+    {  99, 4, 2, 3, 0.37f },
 };
 
 /* Foliage tint per variant (0xRRGGBBAA), deep alpine conifer greens. */
@@ -29,7 +29,7 @@ static const uint32_t FOLIAGE[SCAT_TREE_VARIANTS] = {
  * cull sooner than their size alone would suggest; rocks are tiny and
  * pop in close; boulders are big landmarks kept visible far out. */
 static const float KIND_DIST[SCAT_KIND_COUNT] = {
-    [SCAT_TREE] = 85.f, [SCAT_ROCK] = 62.f, [SCAT_BOULDER] = 140.f,
+    [SCAT_TREE] = 72.f, [SCAT_ROCK] = 55.f, [SCAT_BOULDER] = 130.f,
 };
 
 /* Horizontal frustum half-angle tangent (65° vertical FOV widened by the
@@ -74,7 +74,7 @@ static void pack_into(T3DVertPacked *buf, int v, const float p[3],
  * fixed-point-friendly unit space and scaled by the instance matrix.
  * VSCALE bakes the unit mesh at a larger integer size so the int16
  * vertex positions keep precision; matrices divide it back out. */
-#define VSCALE 256.f
+#define VSCALE 64.f
 
 static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
                                const uint32_t *col, int nvert,
@@ -275,7 +275,7 @@ static void build_instance_matrix(int out, const scatter_t *s, float mesh_h) {
      * verts overruns the guard band and locks the RDP. Drop the whole
      * instance before that — you can't see a tree you're standing in
      * anyway. Sized to the object's horizontal reach + the near plane. */
-    inst_near[out] = s->kind == SCAT_TREE ? s->scale * 0.42f + 1.9f
+    inst_near[out] = s->kind == SCAT_TREE ? s->scale * 0.5f + 2.5f
                                           : s->scale + 1.6f;
 }
 
@@ -319,7 +319,7 @@ static void draw_one(int i) {
  * on cycle-accurate emulation), so trees get a hard per-frame budget and
  * only the nearest few actually draw. Rocks and boulders are ~8 tris, so
  * they draw freely once culled. */
-#define TREE_BUDGET 10
+#define TREE_BUDGET 6
 
 typedef struct { int idx; float d2; } cand_t;
 static cand_t tree_cand[512];   /* >= max placed instances */

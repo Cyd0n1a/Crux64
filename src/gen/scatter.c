@@ -21,8 +21,8 @@
 #define TREELINE         58.0f
 #define TREE_FADE_LO     30.0f   /* full density below here, 0 at TREELINE */
 #define GROVE_FREQ       0.028f
-#define GROVE_MIN        0.10f   /* grove field must clear this to seed trees */
-#define TREE_DENSITY     0.55f   /* stands stay open, not a solid canopy */
+#define GROVE_MIN        0.14f   /* grove field must clear this to seed trees */
+#define TREE_DENSITY     0.38f   /* stands stay open, not a solid canopy */
 
 /* Mossy rocks: broad spread on anything not near-vertical. */
 #define ROCK_NY_MIN      0.62f
