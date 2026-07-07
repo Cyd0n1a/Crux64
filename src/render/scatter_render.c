@@ -29,8 +29,12 @@ static const uint32_t FOLIAGE[SCAT_TREE_VARIANTS] = {
  * cull sooner than their size alone would suggest; rocks are tiny and
  * pop in close; boulders are big landmarks kept visible far out. */
 static const float KIND_DIST[SCAT_KIND_COUNT] = {
-    [SCAT_TREE] = 150.f, [SCAT_ROCK] = 88.f, [SCAT_BOULDER] = 175.f,
+    [SCAT_TREE] = 85.f, [SCAT_ROCK] = 62.f, [SCAT_BOULDER] = 140.f,
 };
+
+/* Horizontal frustum half-angle tangent (65° vertical FOV widened by the
+ * 4:3 aspect ≈ 80° across, plus margin so nothing pops at the edges). */
+#define FRUSTUM_TAN 1.20f
 
 typedef struct { rspq_block_t *blk; float height; } tree_mesh_blk_t;
 
@@ -42,7 +46,8 @@ static rspq_block_t   *boulder_blk[SCAT_BOULDER_VARIANTS];
  * cull sphere (center + radius). */
 static T3DMat4FP *inst_mat;
 static T3DVec3   *inst_center;
-static float     *inst_radius;
+static float     *inst_radius;   /* far-cull bounding radius   */
+static float     *inst_near;     /* skip if the eye is closer  */
 static int        inst_count;
 
 /* ------------------------------------------------------------------ */
@@ -144,10 +149,12 @@ static void build_tree(int variant) {
              TREE_PARAM[variant].twig, 2.4f);
 
     int nv = m.nvert + m.ntwigvert;
-    /* Branch faces once (closed tubes → back-face cull is fine); twig
-     * leaf-cards are single quads, so emit each twig triangle both
-     * windings to show foliage from both sides under one draw state. */
-    int nt = m.nface + m.ntwigface * 2;
+    /* Branch faces are closed tubes (back-face cull is correct). Twig
+     * leaf-cards are single quads drawn single-sided too: doubling them
+     * for two-sided foliage tripled the fill-rate cost of the canopy,
+     * which is the RDP's bottleneck here, so we eat the odd missing
+     * back-leaf instead. */
+    int nt = m.nface + m.ntwigface;
 
     float *pos = malloc(sizeof(float) * 3 * nv);
     float *nrm = malloc(sizeof(float) * 3 * nv);
@@ -180,11 +187,9 @@ static void build_tree(int variant) {
         idx[w++] = m.vidx[i * 3 + 2];
     }
     for (int i = 0; i < m.ntwigface; i++) {
-        int a = m.tidx[i * 3] + m.nvert;
-        int b = m.tidx[i * 3 + 1] + m.nvert;
-        int c = m.tidx[i * 3 + 2] + m.nvert;
-        idx[w++] = a; idx[w++] = b; idx[w++] = c;
-        idx[w++] = a; idx[w++] = c; idx[w++] = b;   /* back side */
+        idx[w++] = m.tidx[i * 3]     + m.nvert;
+        idx[w++] = m.tidx[i * 3 + 1] + m.nvert;
+        idx[w++] = m.tidx[i * 3 + 2] + m.nvert;
     }
 
     tree_blk[variant].blk    = bake_mesh(pos, nrm, col, nv, idx, nt);
@@ -264,6 +269,14 @@ static void build_instance_matrix(int out, const scatter_t *s, float mesh_h) {
                                    s->pos[2] }};
     inst_radius[out] = s->kind == SCAT_TREE ? s->scale * 0.7f
                                             : s->scale * 1.3f;
+
+    /* Near-skip radius: once the eye is this close, the mesh straddles
+     * the camera near plane and the perspective divide of near-zero-w
+     * verts overruns the guard band and locks the RDP. Drop the whole
+     * instance before that — you can't see a tree you're standing in
+     * anyway. Sized to the object's horizontal reach + the near plane. */
+    inst_near[out] = s->kind == SCAT_TREE ? s->scale * 0.42f + 1.9f
+                                          : s->scale + 1.6f;
 }
 
 void scatter_render_init(void) {
@@ -278,6 +291,7 @@ void scatter_render_init(void) {
     inst_mat    = malloc_uncached(sizeof(T3DMat4FP) * inst_count);
     inst_center = malloc(sizeof(T3DVec3) * inst_count);
     inst_radius = malloc(sizeof(float) * inst_count);
+    inst_near   = malloc(sizeof(float) * inst_count);
 
     for (int i = 0; i < inst_count; i++) {
         const scatter_t *s = scatter_get(i);
@@ -295,6 +309,21 @@ static rspq_block_t *block_for(const scatter_t *s) {
     }
 }
 
+static void draw_one(int i) {
+    t3d_matrix_push(&inst_mat[i]);
+    rspq_block_run(block_for(scatter_get(i)));
+    t3d_matrix_pop(1);
+}
+
+/* A tree is ~250 tris; a grove of them in frame would swamp the RSP (2fps
+ * on cycle-accurate emulation), so trees get a hard per-frame budget and
+ * only the nearest few actually draw. Rocks and boulders are ~8 tris, so
+ * they draw freely once culled. */
+#define TREE_BUDGET 10
+
+typedef struct { int idx; float d2; } cand_t;
+static cand_t tree_cand[512];   /* >= max placed instances */
+
 void scatter_render_draw(const T3DVec3 *eye, const T3DVec3 *target) {
     if (inst_count <= 0)
         return;
@@ -304,21 +333,52 @@ void scatter_render_draw(const T3DVec3 *eye, const T3DVec3 *target) {
                      target->v[2] - eye->v[2] }};
     t3d_vec3_norm(&fwd);
 
+    int ntree = 0;
     for (int i = 0; i < inst_count; i++) {
         const scatter_t *s = scatter_get(i);
         T3DVec3 to = {{ inst_center[i].v[0] - eye->v[0],
                         inst_center[i].v[1] - eye->v[1],
                         inst_center[i].v[2] - eye->v[2] }};
-        float along = t3d_vec3_dot(&to, &fwd);
-        if (along < -inst_radius[i])
-            continue;
         float d2 = t3d_vec3_dot(&to, &to);
+
+        /* Crash guard: never draw an instance the eye is inside. */
+        if (d2 < inst_near[i] * inst_near[i])
+            continue;
+
         float reach = KIND_DIST[s->kind] + inst_radius[i];
         if (d2 > reach * reach)
             continue;
 
-        t3d_matrix_push(&inst_mat[i]);
-        rspq_block_run(block_for(s));
-        t3d_matrix_pop(1);
+        float along = t3d_vec3_dot(&to, &fwd);
+        if (along < -inst_radius[i])
+            continue;   /* behind the camera */
+
+        /* Horizontal frustum reject: how far off the view axis the
+         * instance sits vs. what the FOV allows at that depth. */
+        float perp2 = d2 - along * along;
+        if (perp2 < 0.f) perp2 = 0.f;
+        float allowed = along * FRUSTUM_TAN + inst_radius[i];
+        if (allowed > 0.f && perp2 > allowed * allowed)
+            continue;
+
+        if (s->kind == SCAT_TREE) {
+            /* Insertion-sort into the nearest-first candidate list,
+             * bounded to the budget so the list and the draw stay cheap. */
+            int pos = ntree < TREE_BUDGET ? ntree : TREE_BUDGET - 1;
+            if (ntree >= TREE_BUDGET && d2 >= tree_cand[pos].d2)
+                continue;   /* farther than the current cutoff */
+            if (ntree < TREE_BUDGET) ntree++;
+            while (pos > 0 && tree_cand[pos - 1].d2 > d2) {
+                tree_cand[pos] = tree_cand[pos - 1];
+                pos--;
+            }
+            tree_cand[pos].idx = i;
+            tree_cand[pos].d2  = d2;
+        } else {
+            draw_one(i);
+        }
     }
+
+    for (int t = 0; t < ntree; t++)
+        draw_one(tree_cand[t].idx);
 }
