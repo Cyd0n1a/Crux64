@@ -26,13 +26,15 @@
 #define COL_SKIN   0xF0C8A0FF
 #define COL_GRIP   0xE8E0D0FF
 #define COL_READY  0x58E060FF
+#define COL_PITON  0xD8B048FF
 
 static T3DVertPacked *box_suit;    /* 8 verts: y 0..64, x/z +/-64 */
 static T3DVertPacked *box_skin;
 static T3DVertPacked *octa_grip;   /* 6 verts at +/-64 on each axis */
 static T3DVertPacked *octa_ready;
+static T3DVertPacked *octa_piton;
 
-static rspq_block_t *blk_suit, *blk_skin, *blk_grip, *blk_ready;
+static rspq_block_t *blk_suit, *blk_skin, *blk_grip, *blk_ready, *blk_piton;
 
 static T3DMat4FP       *mats[MAT_BUFS];
 static rspq_syncpoint_t mat_sync[MAT_BUFS];
@@ -109,10 +111,12 @@ void climber_render_init(void) {
     box_skin   = make_box(COL_SKIN);
     octa_grip  = make_octa(COL_GRIP);
     octa_ready = make_octa(COL_READY);
+    octa_piton = make_octa(COL_PITON);
     blk_suit  = record_box(box_suit);
     blk_skin  = record_box(box_skin);
     blk_grip  = record_octa(octa_grip);
     blk_ready = record_octa(octa_ready);
+    blk_piton = record_octa(octa_piton);
 
     for (int i = 0; i < MAT_BUFS; i++) {
         mats[i] = malloc_uncached(sizeof(T3DMat4FP) * MAX_MATS);
@@ -218,6 +222,10 @@ void climber_render_draw(void) {
         }
     }
 
+    /* The placed piton — the rope's checkpoint — glints gold. */
+    if (c->piton_valid)
+        draw_marker(c->piton_pos, c->piton_n, 0.075f, blk_piton);
+
     /* Skeleton: torso + head boxes, two segments per limb. */
     draw_bone(c->hip, c->neck, 0.085f, c->wall_n, blk_suit);
 
@@ -229,10 +237,28 @@ void climber_render_draw(void) {
     v3_mad(head_top, c->up, CL_HEAD_R);
     draw_bone(head_base, head_top, CL_HEAD_R * 0.85f, c->wall_n, blk_skin);
 
+    /* GDD 3.1: stamina shake = high-frequency noise on the bone
+     * endpoints. ~7Hz sines sampled at 30fps alias into an erratic
+     * judder — exactly the violent tremble wanted. The elbow/knee
+     * moves most; the gripping tip barely shifts. */
+    float tt = (float)((double)get_ticks_us() * 1e-6);
     for (int l = 0; l < LIMB_COUNT; l++) {
         const climber_limb_t *lb = &c->limbs[l];
-        draw_bone(lb->root, lb->mid, 0.048f, c->wall_n, blk_suit);
-        draw_bone(lb->mid,  lb->tip, 0.040f, c->wall_n, blk_suit);
+        float mid[3], tip[3];
+        v3_copy(mid, lb->mid);
+        v3_copy(tip, lb->tip);
+        float sh = c->shake[l];
+        if (sh > 0.01f) {
+            float a = 0.030f * sh, f = 41.f + 3.f * (float)l;
+            mid[0] += a * sinf(tt * f + (float)l * 7.1f);
+            mid[1] += a * sinf(tt * (f + 6.f) + (float)l * 3.3f + 1.4f);
+            mid[2] += a * sinf(tt * (f + 11.f) + (float)l * 5.2f + 2.7f);
+            float b = 0.012f * sh;
+            tip[0] += b * sinf(tt * (f + 17.f) + 0.5f);
+            tip[1] += b * sinf(tt * (f + 23.f) + 1.9f);
+        }
+        draw_bone(lb->root, mid, 0.048f, c->wall_n, blk_suit);
+        draw_bone(mid,      tip, 0.040f, c->wall_n, blk_suit);
     }
 
     mat_sync[mat_buf] = rspq_syncpoint_new();

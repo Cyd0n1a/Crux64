@@ -8,12 +8,13 @@
  * Crux64 — physics-based procedural mountain climbing for the N64.
  * (c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries.
  *
- * Phase 3 (GDD 5.3): stick-figure IK + limb snapping. Spawn on foot at
- * the mountain's base: walk with the stick (hold Z to steer the camera
- * instead), hold a C button at a wall to grab on. While climbing, hold
- * a C button to steer that limb along the rock, release to catch the
- * nearest grip; R with no limb held steps off onto walkable ground.
- * Balance and stamina land in Phase 4.
+ * Phase 4 (GDD 5.4): posture, balance, stamina. Anchored limbs tire —
+ * arms faster than legs, worse when overextended or off balance — and
+ * peel when spent; lose the wall and you fall until the rope catches
+ * on your last piton or you fetch up on walkable ground. Hold R with a
+ * limb selected to shake it out, A chalks up, Z drives a piton (full
+ * restore + fall checkpoint). Fatigue reads as limb shake and rising
+ * rumble; the camera leans in on delicate holds.
  */
 
 #include <libdragon.h>
@@ -52,12 +53,14 @@ int main(void) {
 
     render_init();
 
-    /* Follow camera: orbits the climber on the D-pad, seeded looking at
-     * their back. GDD 3.1's collision-aware zoom comes with Phase 4. */
+    /* Follow camera: orbits the climber on the D-pad, seeded looking
+     * at their back. GDD 3.1: zooms in as strain rises on delicate
+     * holds, pulls back to showcase the peak when resting or falling. */
     const climber_t *cs = climber_state();
     float cam_yaw   = atan2f(cs->wall_n[0], cs->wall_n[2]);
     float cam_pitch = 0.25f;
-    const float cam_dist = 5.6f;
+    float cam_dist  = 5.6f;
+    float pulse_t   = 0.f;   /* fatigue rumble pulse timer */
 
     /* Title screen: a slow right-to-left orbit around the whole massif
      * (camera strafes right, so the mountain drifts leftward on screen)
@@ -107,19 +110,48 @@ int main(void) {
         if (cam_pitch < -0.45f) cam_pitch = -0.45f;
         if (cam_pitch >  1.05f) cam_pitch =  1.05f;
 
-        /* Haptics: solid catch thumps, a whiffed release buzzes softly;
-         * the climbing-verb cues (piton/rest/chalk) only fire on the
-         * wall — on foot Z is the camera modifier, not the piton. */
+        /* The weakest grip still holding — drives rumble + warnings. */
+        float worst = 1.f;
+        for (int l = 0; l < LIMB_COUNT; l++)
+            if (cs->limbs[l].grip >= 0 && cs->stam[l] < worst)
+                worst = cs->stam[l];
+
+        /* Haptics: one kick per climbing event... */
         if (cs->snapped)     rumble_kick(0.5f, 0.18f);
         if (cs->snap_failed) rumble_kick(0.25f, 0.30f);
         if (cs->mounted)     rumble_kick(0.45f, 0.20f);
         if (cs->dismounted)  rumble_kick(0.3f, 0.15f);
+        if (cs->piton_set)   rumble_kick(1.0f, 0.35f);
+        if (cs->chalked)     rumble_kick(0.2f, 0.15f);
+        if (cs->peeled)      rumble_kick(0.7f, 0.35f);
+        if (cs->fell)        rumble_kick(1.0f, 1.0f);
+        if (cs->caught)      rumble_kick(1.0f, 0.5f);
+        if (cs->landed)      rumble_kick(0.85f, 0.45f);
+
+        /* ...plus GDD 2.2's progressive fatigue: light pulses quicken
+         * as the worst grip tires, and once failure is a second or two
+         * out the motor stays on. */
         if (cs->mode == CLIMBER_CLIMBING) {
-            if (in->piton) rumble_kick(1.0f, 0.35f);
-            if (in->rest)  rumble_kick(0.4f, 0.60f);
-            if (in->chalk) rumble_kick(0.2f, 0.15f);
+            if (worst < 0.15f) {
+                rumble_kick(0.8f, 0.3f);
+            } else if (worst < 0.55f) {
+                pulse_t -= dt;
+                if (pulse_t <= 0.f) {
+                    float x = (0.55f - worst) / 0.40f;
+                    rumble_kick(0.15f + 0.30f * x, 0.12f);
+                    pulse_t = 1.2f - 0.9f * x;
+                }
+            } else {
+                pulse_t = 0.3f;
+            }
         }
         rumble_update(dt);
+
+        /* GDD 3.1: zoom in on delicate holds, pull back at rest and to
+         * frame the whole tumble on a fall. */
+        float dist_want = cs->mode == CLIMBER_FALLING
+                        ? 7.6f : 5.6f - 2.4f * cs->strain;
+        cam_dist += (dist_want - cam_dist) * fminf(1.f, 2.5f * dt);
 
         T3DVec3 target = {{ cs->neck[0], cs->neck[1], cs->neck[2] }};
         float cp = cosf(cam_pitch);
@@ -133,13 +165,19 @@ int main(void) {
         float ground = mountain_height(eye.v[0], eye.v[2]) + 0.6f;
         if (eye.v[1] < ground) eye.v[1] = ground;
 
-        char status[48];
+        char status[64];
         if (cs->mode == CLIMBER_ON_FOOT)
             snprintf(status, sizeof status, "ON FOOT   (Z) CAMERA  (C) GRAB WALL");
+        else if (cs->mode == CLIMBER_FALLING)
+            snprintf(status, sizeof status, "FALLING!");
+        else if (cs->shakeout)
+            snprintf(status, sizeof status, "SHAKING OUT: %s", limb_name(cs->active));
+        else if (worst < 0.15f)
+            snprintf(status, sizeof status, "!! GRIP FAILING - SHAKE OUT (R) !!");
         else if (cs->active != LIMB_NONE)
             snprintf(status, sizeof status, "MOVING: %s", limb_name(cs->active));
         else
-            snprintf(status, sizeof status, "ON WALL   (R) STEP OFF");
+            snprintf(status, sizeof status, "ON WALL   (R) STEP OFF  (Z) PITON");
 
         render_hud_t hud = {
             .gen_ms      = gen_ms,
@@ -147,6 +185,9 @@ int main(void) {
             .rumble_ok   = in->rumble_present,
             .status      = status,
             .grip_count  = grips_count(),
+            .stam        = cs->mode == CLIMBER_ON_FOOT ? NULL : cs->stam,
+            .pitons      = cs->pitons,
+            .chalk       = cs->chalk_uses,
         };
         render_frame(&eye, &target, &hud);
     }

@@ -131,6 +131,28 @@ void render_init(void) {
 }
 
 static void draw_hud(const render_hud_t *hud) {
+    /* Per-limb stamina bars (dev meter; GDD 4 hides this behind an
+     * options toggle once menus exist). Order matches the C buttons:
+     * right arm, left arm, right leg, left leg. */
+    if (hud->stam) {
+        rdpq_set_mode_fill(RGBA32(28, 30, 40, 0xFF));
+        for (int i = 0; i < 4; i++)
+            rdpq_fill_rectangle(252 + i * 13, 182, 260 + i * 13, 202);
+        for (int i = 0; i < 4; i++) {
+            float s = hud->stam[i];
+            rdpq_set_fill_color(s > 0.5f  ? RGBA32(70, 200, 90, 0xFF)
+                              : s > 0.25f ? RGBA32(230, 190, 60, 0xFF)
+                                          : RGBA32(235, 60, 50, 0xFF));
+            int h = (int)(s * 18.f + 0.5f);
+            if (h > 0)
+                rdpq_fill_rectangle(253 + i * 13, 201 - h,
+                                    259 + i * 13, 201);
+        }
+        rdpq_set_mode_standard();
+    }
+    rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 252, 216,
+                     "P%d C%d", hud->pitons, hud->chalk);
+
     rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 22,
                      "CRUX64 %s  seed 0x%08lX", CRUX64_VERSION,
                      (unsigned long)MTN_SEED);

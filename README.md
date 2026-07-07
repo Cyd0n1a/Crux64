@@ -38,11 +38,17 @@ apron below the first pitch. Walk in to the wall and grab on.
 |---|---|
 | C-Up / C-Left / C-Right / C-Down | Select right arm / left arm / right leg / left leg |
 | Analog stick | Move selected limb (release C to snap to the green hold) |
-| Z | Place piton / clip in |
-| R (limb selected) | Shake out / rest selected limb |
+| Z | Drive a piton — full stamina restore + rope checkpoint for falls |
+| R (hold, limb selected) | Shake out that limb to recover its stamina |
 | R (no limb selected) | Step off onto walkable ground (base, ledges, benches) |
-| A | Apply chalk |
+| A | Chalk up (slower grip drain for the next 5 holds) |
 | D-Pad | Orbit camera |
+
+Anchored limbs tire — arms faster than legs, much faster when
+overextended or with your weight hung outside your holds. A spent limb
+peels off; lose the wall and you fall until the rope catches on your
+last piton or you hit walkable ground. Watch the shakes and feel the
+rumble build.
 
 ## Building
 
@@ -69,6 +75,9 @@ hardware via a flashcart.
       point light), walk the aprons and benches, grab on and step off
       anywhere walkable meets climbable; title screen with a slow
       orbit of the massif and a waving rainbow cube-letter logo
-- [ ] Phase 4 — posture, balance, stamina
+- [x] Phase 4 — posture, balance, stamina (CoG support envelope,
+      per-limb + core stamina, overextension, limb peel + falls,
+      shake-out rests, chalk, pitons that catch falls, limb-shake
+      visuals, progressive rumble, strain-driven camera zoom)
 - [ ] Phase 5 — audio (minimp3 music + procedural DSP SFX)
 - [ ] Phase 6 — EEPROM saves, polish, optimization

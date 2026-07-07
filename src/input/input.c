@@ -44,6 +44,7 @@ void input_poll(void) {
     st.piton     = btn.z;
     st.z_held    = held.z;
     st.rest      = btn.r;
+    st.rest_held = held.r;
     st.chalk     = btn.a;
     st.start_btn = btn.start;
 

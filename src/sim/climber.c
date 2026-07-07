@@ -21,8 +21,19 @@ static int prev_grip[LIMB_COUNT];   /* fallback if a release finds no hold */
 #define DISMOUNT_H     1.15f  /* max hip height over ground to step off */
 #define STAND_H        ((CL_LEG_UPPER + CL_LEG_LOWER) * 0.93f)
 
+/* Phase 4 (GDD 2.1/2.2) tuning. Legs carry weight far longer than arms:
+ * push up, don't pull up. */
+#define STAM_ARM_T      80.f    /* seconds an idle anchored arm lasts */
+#define STAM_LEG_T      200.f
+#define OVEREXT_START   0.80f   /* extension ratio where drain ramps up */
+#define PEEL_RESERVE    0.15f   /* stamina a just-peeled limb keeps */
+#define SHAKEOUT_RECOV  0.30f   /* stamina/s regained shaking out */
+#define FALL_GRAV       14.f
+
 static float gait;         /* walk cycle phase */
 static float walk_sm;      /* smoothed walk speed for the gait pose */
+static float sim_t;        /* running sim time (flail/dangle phases) */
+static float fall_vel[3];
 
 static const float WORLD_UP[3] = { 0.f, 1.f, 0.f };
 
@@ -114,19 +125,29 @@ static void place_roots(void) {
  * spread, position eased toward a point hung between hands and feet,
  * relaxed until every anchored tip is back inside its limb's reach. */
 static void solve_torso(float dt) {
-    climber_limb_t *ra = &cl.limbs[LIMB_ARM_R], *la = &cl.limbs[LIMB_ARM_L];
-    climber_limb_t *rl = &cl.limbs[LIMB_LEG_R], *ll = &cl.limbs[LIMB_LEG_L];
-
-    float hands[3], feet[3];
-    v3_lerp(hands, ra->tip, la->tip, 0.5f);
-    v3_lerp(feet,  rl->tip, ll->tip, 0.5f);
-
-    /* Wall normal: average of the faces the four tips rest on. */
+    /* Only limbs on the rock steer the torso — a peeled limb dangles
+     * from its joint and mustn't drag the frame off the wall. The
+     * steered limb counts (its tip rides the surface) unless it's
+     * hanging loose for a shake-out. */
+    float hands[3] = { 0.f, 0.f, 0.f }, feet[3] = { 0.f, 0.f, 0.f };
+    int nh = 0, nf = 0;
     float wn[3] = { 0.f, 0.f, 0.f }, n[3];
     for (int l = 0; l < LIMB_COUNT; l++) {
-        mountain_surface(cl.limbs[l].tip[0], cl.limbs[l].tip[2], n);
+        climber_limb_t *lb = &cl.limbs[l];
+        if (lb->grip < 0 && (cl.active != (limb_id_t)l || cl.shakeout))
+            continue;
+        if (limb_is_arm((limb_id_t)l)) {
+            v3_add(hands, hands, lb->tip);
+            nh++;
+        } else {
+            v3_add(feet, feet, lb->tip);
+            nf++;
+        }
+        mountain_surface(lb->tip[0], lb->tip[2], n);
         v3_add(wn, wn, n);
     }
+    if (nh) v3_scale(hands, hands, 1.f / (float)nh);
+    if (nf) v3_scale(feet,  feet,  1.f / (float)nf);
     if (v3_norm(wn) < 1e-5f)
         v3_copy(wn, WORLD_UP);
     v3_copy(cl.wall_n, wn);
@@ -140,6 +161,16 @@ static void solve_torso(float dt) {
     v3_mad(upt, wn, -v3_dot(upt, wn));
     if (v3_norm(upt) < 1e-5f)
         v3_copy(upt, WORLD_UP);
+    /* One side entirely off the rock: extrapolate it up the fall line
+     * so the spine keeps a sane direction. */
+    if (!nh) {
+        v3_copy(hands, feet);
+        v3_mad(hands, upt, CL_TORSO_LEN * 1.4f);
+    }
+    if (!nf) {
+        v3_copy(feet, hands);
+        v3_mad(feet, upt, -CL_TORSO_LEN * 1.4f);
+    }
     float spine[3];
     v3_sub(spine, hands, feet);
     if (v3_norm(spine) < 1e-5f)
@@ -178,8 +209,8 @@ static void solve_torso(float dt) {
 
         for (int l = 0; l < LIMB_COUNT; l++) {
             climber_limb_t *lb = &cl.limbs[l];
-            if (lb->grip < 0 && cl.active == (limb_id_t)l)
-                continue;   /* steered limb chases the torso, not vice versa */
+            if (lb->grip < 0)
+                continue;   /* steered/peeled limbs chase the torso */
             float d[3];
             v3_sub(d, lb->tip, lb->root);
             float len = v3_len(d);
@@ -252,6 +283,8 @@ static void snap_limb(limb_id_t l) {
     if (g >= 0) {
         attach_tip(lb, g);
         cl.snapped = true;
+        if (cl.chalk_holds > 0)
+            cl.chalk_holds--;
     } else {
         attach_tip(lb, prev_grip[l]);
         cl.snap_failed = true;
@@ -261,6 +294,15 @@ static void snap_limb(limb_id_t l) {
 static void solve_all_limbs(void) {
     for (int l = 0; l < LIMB_COUNT; l++) {
         climber_limb_t *lb = &cl.limbs[l];
+        /* Peeled limbs (and the free limb during a shake-out) hang
+         * loose off the wall with a slow swing. */
+        if (lb->grip < 0 && (cl.active != (limb_id_t)l || cl.shakeout)) {
+            v3_copy(lb->tip, lb->root);
+            v3_mad(lb->tip, cl.up, -limb_reach((limb_id_t)l) * 0.82f);
+            v3_mad(lb->tip, cl.wall_n, 0.12f);
+            v3_mad(lb->tip, cl.right,
+                   0.05f * sinf(sim_t * 8.f + (float)l * 1.9f));
+        }
         float pole[3];
         if (limb_is_arm((limb_id_t)l)) {
             /* Elbows drift out from the wall and down. */
@@ -275,6 +317,136 @@ static void solve_all_limbs(void) {
         }
         solve_limb(lb, limb_upper((limb_id_t)l), limb_lower((limb_id_t)l), pole);
     }
+}
+
+static int count_anchored(void) {
+    int n = 0;
+    for (int l = 0; l < LIMB_COUNT; l++)
+        if (cl.limbs[l].grip >= 0)
+            n++;
+    return n;
+}
+
+/* CoG vs support (GDD 2.1): project the anchored tips onto the torso's
+ * right axis, relative to the hip. If the hip hangs outside the lateral
+ * spread of the contacts, the climber is off balance and drains fast.
+ * (Vertically, hanging below the hands is the stable case — only the
+ * sideways excursion counts.) */
+static void update_balance(void) {
+    float mn = 1e9f, mx = -1e9f;
+    int cnt = 0;
+    for (int l = 0; l < LIMB_COUNT; l++) {
+        climber_limb_t *lb = &cl.limbs[l];
+        if (lb->grip < 0)
+            continue;
+        float d[3];
+        v3_sub(d, lb->tip, cl.hip);
+        float r = v3_dot(d, cl.right);
+        if (r < mn) mn = r;
+        if (r > mx) mx = r;
+        cnt++;
+    }
+    cl.contacts = cnt;
+
+    float e = 0.f;
+    const float slack = 0.10f;
+    if (cnt > 0) {
+        if (mn > slack)
+            e = mn - slack;      /* every contact is off to the right */
+        if (-mx > slack)
+            e = -mx - slack;     /* ...or off to the left */
+    }
+    cl.imbalance = e > 0.30f ? 1.f : e / 0.30f;
+}
+
+static void start_fall(void) {
+    cl.mode = CLIMBER_FALLING;
+    cl.active = LIMB_NONE;
+    for (int l = 0; l < LIMB_COUNT; l++)
+        cl.limbs[l].grip = -1;
+    v3_scale(fall_vel, cl.wall_n, 1.2f);   /* pop off the face */
+    fall_vel[1] = 0.4f;
+    cl.fell = true;
+    cl.strain = 1.f;
+}
+
+static void peel_limb(limb_id_t l) {
+    if (cl.limbs[l].grip >= 0)
+        prev_grip[l] = cl.limbs[l].grip;
+    cl.limbs[l].grip = -1;
+    cl.stam[l] = PEEL_RESERVE;
+    cl.peeled = true;
+    cl.peeled_limb = l;
+}
+
+/* GDD 2.2: stamina per limb. Anchored limbs drain — arms faster than
+ * legs, exponentially worse past OVEREXT_START of full reach, worse
+ * off balance, short of 3-point contact, or with the core spent. The
+ * free limb recovers, fast during a shake-out; peeled limbs crawl
+ * back to usable. An anchored limb hitting zero peels off its grip. */
+static void stamina_update(float dt) {
+    float bal_m     = 1.f + 3.f * cl.imbalance * cl.imbalance;
+    float contact_m = cl.contacts >= 4 ? 1.f
+                    : cl.contacts == 3 ? 1.35f : 2.2f;
+    float chalk_m   = cl.chalk_holds > 0 ? 0.6f : 1.f;
+    float core_m    = cl.core < 0.3f ? 2.f - cl.core * 3.33f : 1.f;
+
+    for (int l = 0; l < LIMB_COUNT; l++) {
+        climber_limb_t *lb = &cl.limbs[l];
+        if (lb->grip >= 0) {
+            float base = 1.f / (limb_is_arm((limb_id_t)l) ? STAM_ARM_T
+                                                          : STAM_LEG_T);
+            float d[3];
+            v3_sub(d, lb->tip, lb->root);
+            float ext = v3_len(d) / limb_reach((limb_id_t)l);
+            float over_m = ext > OVEREXT_START
+                         ? expf(6.f * (ext - OVEREXT_START)) : 1.f;
+            cl.stam[l] -= base * over_m * bal_m * contact_m * chalk_m
+                        * core_m * (cl.shakeout ? 1.3f : 1.f) * dt;
+            if (cl.stam[l] <= 0.f)
+                peel_limb((limb_id_t)l);
+        } else if ((limb_id_t)l == cl.active) {
+            cl.stam[l] += (cl.shakeout ? SHAKEOUT_RECOV : 0.02f) * dt;
+        } else {
+            cl.stam[l] += 0.05f * dt;
+        }
+        if (cl.stam[l] > 1.f) cl.stam[l] = 1.f;
+        if (cl.stam[l] < 0.f) cl.stam[l] = 0.f;
+    }
+
+    /* Core reserve: leaks while strained, refills in a solid stance. */
+    if (cl.imbalance > 0.1f || cl.contacts < 3)
+        cl.core -= 0.02f * bal_m * dt;
+    else if (cl.contacts >= 4)
+        cl.core += 0.03f * dt;
+    if (cl.core > 1.f) cl.core = 1.f;
+    if (cl.core < 0.f) cl.core = 0.f;
+
+    /* Visual shake ramps as a limb tires or balance goes (GDD 2.2);
+     * strain drives the camera zoom (GDD 3.1). */
+    float worst = 1.f;
+    for (int l = 0; l < LIMB_COUNT; l++) {
+        float sh = (0.55f - cl.stam[l]) * 2.2f;
+        if (sh < 0.f) sh = 0.f;
+        sh += 0.7f * cl.imbalance;
+        if (cl.limbs[l].grip < 0)
+            sh *= 0.4f;                 /* unloaded limbs tremble less */
+        cl.shake[l] = sh > 1.f ? 1.f : sh;
+        if (cl.stam[l] < worst)
+            worst = cl.stam[l];
+    }
+
+    float st = (0.6f - worst) * 1.8f;
+    if (cl.imbalance > st) st = cl.imbalance;
+    if (st < 0.f) st = 0.f;
+    if (st > 1.f) st = 1.f;
+    float k = 4.f * dt;
+    if (k > 1.f) k = 1.f;
+    cl.strain += (st - cl.strain) * k;
+
+    /* Down to one point of contact: gravity wins. */
+    if (count_anchored() < 2)
+        start_fall();
 }
 
 /* Latch onto the wall: frame off the nearest hold's face, then seed
@@ -360,6 +532,78 @@ static void enter_on_foot(void) {
     gait = 0.f;
     walk_sm = 0.f;
     cl.dismounted = true;
+}
+
+/* Falling: the torso keeps its last wall frame while the limbs flail;
+ * gravity + surface sliding move the hip. The rope catches on the last
+ * piton (GDD 2.3 off-belay) and remounts there; otherwise the climber
+ * tumbles until fetching up on walkable ground. */
+static void fall_pose(void) {
+    place_roots();
+    for (int l = 0; l < LIMB_COUNT; l++) {
+        climber_limb_t *lb = &cl.limbs[l];
+        float ph = sim_t * 11.f + (float)l * 2.3f;
+        v3_copy(lb->tip, lb->root);
+        v3_mad(lb->tip, cl.up, limb_is_arm((limb_id_t)l) ? 0.55f : -0.75f);
+        v3_mad(lb->tip, cl.right, limb_side((limb_id_t)l) * 0.45f
+                                 + 0.18f * sinf(ph));
+        v3_mad(lb->tip, cl.wall_n, 0.25f + 0.15f * sinf(ph * 1.3f + 1.f));
+        float pole[3];
+        v3_copy(pole, cl.wall_n);
+        solve_limb(lb, limb_upper((limb_id_t)l), limb_lower((limb_id_t)l),
+                   pole);
+    }
+    cl.alt = cl.hip[1];
+}
+
+static void fall_update(float dt) {
+    fall_vel[1] -= FALL_GRAV * dt;
+    float sp = v3_len(fall_vel);
+    if (sp > 24.f)
+        v3_scale(fall_vel, fall_vel, 24.f / sp);
+    v3_mad(cl.hip, fall_vel, dt);
+
+    if (cl.hip[0] < -MTN_HALF + 1.f) cl.hip[0] = -MTN_HALF + 1.f;
+    if (cl.hip[0] >  MTN_HALF - 1.f) cl.hip[0] =  MTN_HALF - 1.f;
+    if (cl.hip[2] < -MTN_HALF + 1.f) cl.hip[2] = -MTN_HALF + 1.f;
+    if (cl.hip[2] >  MTN_HALF - 1.f) cl.hip[2] =  MTN_HALF - 1.f;
+
+    /* Past the piton with rope out: the fall is caught. */
+    if (cl.piton_valid && cl.hip[1] < cl.piton_pos[1] - 2.f) {
+        float dx = cl.hip[0] - cl.piton_pos[0];
+        float dz = cl.hip[2] - cl.piton_pos[2];
+        if (dx * dx + dz * dz < 100.f && mount_wall(cl.piton_pos)) {
+            for (int l = 0; l < LIMB_COUNT; l++)
+                if (cl.stam[l] < 0.6f)
+                    cl.stam[l] = 0.6f;
+            cl.caught = true;
+            cl.mounted = false;
+            return;
+        }
+    }
+
+    float gn[3];
+    float gh = mountain_surface(cl.hip[0], cl.hip[2], gn);
+    float clear = (cl.hip[1] - gh) * gn[1];
+    if (clear < 0.35f) {
+        v3_mad(cl.hip, gn, 0.35f - clear);
+        float vn = v3_dot(fall_vel, gn);
+        if (vn < 0.f)
+            v3_mad(fall_vel, gn, -vn);   /* kill the into-rock component */
+        float fr = 1.f - 3.5f * dt;
+        if (fr < 0.f) fr = 0.f;
+        v3_scale(fall_vel, fall_vel, fr);
+        if (gn[1] >= WALK_SLOPE_MIN && v3_len(fall_vel) < 2.f) {
+            for (int l = 0; l < LIMB_COUNT; l++)
+                if (cl.stam[l] < 0.4f)
+                    cl.stam[l] = 0.4f;
+            enter_on_foot();
+            cl.dismounted = false;
+            cl.landed = true;
+            return;
+        }
+    }
+    fall_pose();
 }
 
 /* Standing pose: torso upright over the ground, feet stepping with the
@@ -484,10 +728,30 @@ static void walk_update(const input_state_t *in, float cam_yaw, float dt) {
 
 void climber_update(const input_state_t *in, float cam_yaw, float dt) {
     cl.snapped = cl.snap_failed = cl.mounted = cl.dismounted = false;
+    cl.peeled = cl.fell = cl.caught = cl.landed = false;
+    cl.piton_set = cl.chalked = false;
+    sim_t += dt;
 
     if (cl.mode == CLIMBER_ON_FOOT) {
         cl.active = LIMB_NONE;
+        /* Flat ground is the rest of rests: everything recovers. */
+        for (int l = 0; l < LIMB_COUNT; l++) {
+            cl.stam[l] += 0.12f * dt;
+            if (cl.stam[l] > 1.f) cl.stam[l] = 1.f;
+            cl.shake[l] *= 1.f - fminf(1.f, 6.f * dt);
+        }
+        cl.core += 0.08f * dt;
+        if (cl.core > 1.f) cl.core = 1.f;
+        cl.strain *= 1.f - fminf(1.f, 3.f * dt);
+        cl.imbalance = 0.f;
+        cl.contacts = 0;
+        cl.shakeout = false;
         walk_update(in, cam_yaw, dt);
+        return;
+    }
+
+    if (cl.mode == CLIMBER_FALLING) {
+        fall_update(dt);
         return;
     }
 
@@ -497,17 +761,47 @@ void climber_update(const input_state_t *in, float cam_yaw, float dt) {
         snap_limb(cl.active);
     cl.active = in->limb;
 
+    /* GDD 2.2 recovery: hold R in a stable stance to shake out the
+     * selected (free) limb — it dangles and recovers instead of
+     * steering. Uses last frame's contact/balance read. */
+    cl.shakeout = cl.active != LIMB_NONE && in->rest_held
+               && cl.contacts >= 3 && cl.imbalance < 0.6f;
+
     if (cl.active != LIMB_NONE) {
         climber_limb_t *lb = &cl.limbs[cl.active];
         if (lb->grip >= 0) {
             prev_grip[cl.active] = lb->grip;
             lb->grip = -1;
         }
-        steer_tip(lb, cl.active, in, dt);
+        if (!cl.shakeout)
+            steer_tip(lb, cl.active, in, dt);
     }
 
     solve_torso(dt);
     solve_all_limbs();
+    update_balance();
+    stamina_update(dt);
+    if (cl.mode == CLIMBER_FALLING)
+        return;   /* the last grip just failed */
+
+    /* GDD 2.3 tools. A piton is the full reset: stamina back to max
+     * and a rope checkpoint for the next fall. */
+    if (in->piton && cl.pitons > 0) {
+        cl.pitons--;
+        v3_copy(cl.piton_pos, cl.hip);
+        v3_mad(cl.piton_pos, cl.fwd, WALL_GAP);
+        v3_copy(cl.piton_n, cl.wall_n);
+        cl.piton_valid = true;
+        for (int l = 0; l < LIMB_COUNT; l++)
+            cl.stam[l] = 1.f;
+        cl.core = 1.f;
+        cl.piton_set = true;
+    }
+    if (in->chalk && cl.chalk_uses > 0 && cl.chalk_holds == 0) {
+        cl.chalk_uses--;
+        cl.chalk_holds = 5;
+        cl.chalked = true;
+    }
 
     /* R with no limb held: step off, if there's walkable ground under
      * the hips within standing distance (base of the wall, ledges,
@@ -579,10 +873,15 @@ void climber_init(void) {
     cl = (climber_t){ .active = LIMB_NONE };
     gait = 0.f;
     walk_sm = 0.f;
+    sim_t = 0.f;
     for (int l = 0; l < LIMB_COUNT; l++) {
         cl.limbs[l].grip = -1;
         prev_grip[l] = 0;
+        cl.stam[l] = 1.f;
     }
+    cl.core = 1.f;
+    cl.pitons = 8;
+    cl.chalk_uses = 10;
 
     const grip_t *s = grip_get(find_start_grip());
 

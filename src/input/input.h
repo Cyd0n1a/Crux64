@@ -27,6 +27,7 @@ typedef struct {
     bool  piton;           /* Z pressed this frame */
     bool  z_held;          /* Z held: on foot, stick becomes camera */
     bool  rest;            /* R pressed this frame */
+    bool  rest_held;       /* R held: shake out the selected limb */
     bool  chalk;           /* A pressed this frame */
     bool  start_btn;       /* Start pressed this frame (title screen) */
 
