@@ -8,6 +8,14 @@
  * Crux64 — physics-based procedural mountain climbing for the N64.
  * (c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries.
  *
+ * Phase 5 (GDD 5.5): procedural audio. Every sound is synthesized live
+ * (src/audio/synth.c) — no sampled assets. Wind howls fiercer with
+ * altitude, a low drone bed stands in for the planned minimp3 track, a
+ * heartbeat quickens as the weakest grip fails (locked to the rumble),
+ * and one-shots fire on events: brown-noise placements, a metallic
+ * piton strike, body-thud landings, and pitch-bent exertion grunts that
+ * rasp harder the closer the climber is to peeling off.
+ *
  * Phase 4 (GDD 5.4): posture, balance, stamina. Anchored limbs tire —
  * arms faster than legs, worse when overextended or off balance — and
  * peel when spent; lose the wall and you fall until the rope catches
@@ -25,6 +33,7 @@
 #include "version.h"
 #include "input/input.h"
 #include "input/rumble.h"
+#include "audio/synth.h"
 #include "gen/mountain.h"
 #include "gen/grips.h"
 #include "sim/climber.h"
@@ -43,6 +52,7 @@ int main(void) {
 
     input_init();
     rumble_init();
+    synth_init();
     t3d_init((T3DInitParams){});
 
     long long gen_start = timer_ticks();
@@ -61,6 +71,7 @@ int main(void) {
     float cam_pitch = 0.25f;
     float cam_dist  = 5.6f;
     float pulse_t   = 0.f;   /* fatigue rumble pulse timer */
+    float grunt_t   = 1.f;   /* spacing between sustained-effort grunts */
 
     /* Title screen: a slow right-to-left orbit around the whole massif
      * (camera strafes right, so the mountain drifts leftward on screen)
@@ -88,8 +99,15 @@ int main(void) {
             if (in->start_btn) {
                 in_title = false;
                 rumble_kick(0.4f, 0.2f);
+                synth_chalk();
             }
             rumble_update(dt);
+
+            /* High, exposed vista: gentle wind and the drone bed, no strain. */
+            synth_set_altitude(0.45f);
+            synth_set_stress(0.f);
+            synth_set_falling(false);
+            synth_poll();
 
             render_hud_t hud = {
                 .title     = true,
@@ -128,6 +146,16 @@ int main(void) {
         if (cs->caught)      rumble_kick(1.0f, 0.5f);
         if (cs->landed)      rumble_kick(0.85f, 0.45f);
 
+        /* ...and the matching procedural SFX (GDD 3.3). */
+        if (cs->snapped)     synth_place(0.5f + 0.5f * cs->strain);
+        if (cs->mounted)     synth_place(0.5f);
+        if (cs->piton_set)   synth_piton();
+        if (cs->chalked)     synth_chalk();
+        if (cs->peeled)      synth_grunt(1.f);
+        if (cs->fell)        synth_grunt(0.8f);
+        if (cs->caught)      synth_impact(0.6f);
+        if (cs->landed)      synth_impact(0.9f);
+
         /* ...plus GDD 2.2's progressive fatigue: light pulses quicken
          * as the worst grip tires, and once failure is a second or two
          * out the motor stays on. */
@@ -164,6 +192,31 @@ int main(void) {
         /* Keep the camera out of the rock. */
         float ground = mountain_height(eye.v[0], eye.v[2]) + 0.6f;
         if (eye.v[1] < ground) eye.v[1] = ground;
+
+        /* Continuous audio (GDD 3.3): wind fiercer with altitude, the
+         * heartbeat rising as the weakest grip fails, wind rushing on a
+         * fall. Sustained hard holds draw involuntary grunts, spaced
+         * tighter the closer the climber is to the edge. */
+        float alt01 = cs->alt / 120.f;
+        if (alt01 < 0.f) alt01 = 0.f;
+        if (alt01 > 1.f) alt01 = 1.f;
+        float stress = (0.5f - worst) * 2.f;
+        if (stress < 0.f) stress = 0.f;
+
+        if (cs->mode == CLIMBER_CLIMBING && cs->strain > 0.5f && !cs->shakeout) {
+            grunt_t -= dt;
+            if (grunt_t <= 0.f) {
+                synth_grunt(0.3f + 0.6f * cs->strain);
+                grunt_t = 1.8f - 0.9f * cs->strain;
+            }
+        } else {
+            grunt_t = 0.6f;
+        }
+
+        synth_set_altitude(alt01);
+        synth_set_stress(stress);
+        synth_set_falling(cs->mode == CLIMBER_FALLING);
+        synth_poll();
 
         char status[64];
         if (cs->mode == CLIMBER_ON_FOOT)

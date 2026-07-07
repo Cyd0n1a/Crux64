@@ -12,6 +12,7 @@ OBJS = \
     $(BUILD_DIR)/src/main.o \
     $(BUILD_DIR)/src/input/input.o \
     $(BUILD_DIR)/src/input/rumble.o \
+    $(BUILD_DIR)/src/audio/synth.o \
     $(BUILD_DIR)/src/gen/noise.o \
     $(BUILD_DIR)/src/gen/mountain.o \
     $(BUILD_DIR)/src/gen/grips.o \

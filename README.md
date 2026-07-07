@@ -79,5 +79,9 @@ hardware via a flashcart.
       per-limb + core stamina, overextension, limb peel + falls,
       shake-out rests, chalk, pitons that catch falls, limb-shake
       visuals, progressive rumble, strain-driven camera zoom)
-- [ ] Phase 5 — audio (minimp3 music + procedural DSP SFX)
+- [x] Phase 5 — procedural audio: real-time DSP synthesis (no sampled
+      assets) — altitude-driven wind, a heartbeat that quickens with
+      grip failure, exertion grunts, rock-placement thuds, a metallic
+      piton strike, and an ambient drone bed standing in for the planned
+      minimp3 track
 - [ ] Phase 6 — EEPROM saves, polish, optimization
