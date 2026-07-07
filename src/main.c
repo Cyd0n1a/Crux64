@@ -8,6 +8,12 @@
  * Crux64 — physics-based procedural mountain climbing for the N64.
  * (c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries.
  *
+ * Phase 6 (GDD 5.6): EEPROM save state. The run's max altitude, fall
+ * count and play time persist across power-offs in a single 8-byte
+ * eepromfs block (src/meta/save.c) — recorded in RAM each frame and
+ * flushed only at rest points (piton checkpoints, the end of a fall).
+ * The title screen shows the saved best.
+ *
  * Phase 5 (GDD 5.5): procedural audio. Every sound is synthesized live
  * (src/audio/synth.c) — no sampled assets. Wind howls fiercer with
  * altitude, a low drone bed stands in for the planned minimp3 track, a
@@ -37,6 +43,7 @@
 #include "gen/mountain.h"
 #include "gen/grips.h"
 #include "sim/climber.h"
+#include "meta/save.h"
 #include "render/render.h"
 
 int main(void) {
@@ -53,6 +60,7 @@ int main(void) {
     input_init();
     rumble_init();
     synth_init();
+    save_init();
     t3d_init((T3DInitParams){});
 
     long long gen_start = timer_ticks();
@@ -109,10 +117,14 @@ int main(void) {
             synth_set_falling(false);
             synth_poll();
 
+            const save_data_t *sv = save_get();
             render_hud_t hud = {
-                .title     = true,
-                .rumble_ok = in->rumble_present,
-                .status    = NULL,
+                .title          = true,
+                .rumble_ok      = in->rumble_present,
+                .status         = NULL,
+                .best_alt       = sv->max_altitude,
+                .lifetime_falls = sv->falls,
+                .initials       = sv->initials,
             };
             render_frame(&eye, &target, &hud);
             continue;
@@ -155,6 +167,16 @@ int main(void) {
         if (cs->fell)        synth_grunt(0.8f);
         if (cs->caught)      synth_impact(0.6f);
         if (cs->landed)      synth_impact(0.9f);
+
+        /* Phase 6 (GDD 3.4): fold this run into the persistent record —
+         * RAM-only every frame, flushed to EEPROM only at rest points
+         * (a piton checkpoint, the end of a fall) so the slow write never
+         * lands mid-move. */
+        save_add_time(dt);
+        save_note_altitude(cs->alt);
+        if (cs->fell) save_note_fall();
+        if (cs->piton_set || cs->fell || cs->landed || cs->caught)
+            save_commit();
 
         /* ...plus GDD 2.2's progressive fatigue: light pulses quicken
          * as the worst grip tires, and once failure is a second or two

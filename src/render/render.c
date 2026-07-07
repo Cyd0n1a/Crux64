@@ -173,6 +173,12 @@ static void draw_title_hud(const render_hud_t *hud) {
     if (fmodf(t, 1.1f) < 0.75f)
         rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 116, 176,
                          "PRESS START");
+    /* GDD 3.4: the persistent record, so a returning climber sees their
+     * best straight off the title screen. */
+    if (hud->initials)
+        rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 192,
+                         "%.3s  BEST %dm  FALLS %d",
+                         hud->initials, hud->best_alt, hud->lifetime_falls);
     rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 204,
                      "CRUX64 %s%s", CRUX64_VERSION,
                      hud->rumble_ok ? "" : "   INSERT RUMBLE PAK");

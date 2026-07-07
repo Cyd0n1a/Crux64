@@ -84,4 +84,7 @@ hardware via a flashcart.
       grip failure, exertion grunts, rock-placement thuds, a metallic
       piton strike, and an ambient drone bed standing in for the planned
       minimp3 track
-- [ ] Phase 6 — EEPROM saves, polish, optimization
+- [x] Phase 6 — EEPROM save state: max altitude, lifetime falls and
+      total play time persist across power-offs in a single 8-byte
+      eepromfs block (recorded in RAM, flushed only at rest points); the
+      title screen shows your saved best

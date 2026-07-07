@@ -14,6 +14,11 @@ typedef struct {
     const float *stam;   /* LIMB_COUNT staminas, NULL hides the bars */
     int   pitons;
     int   chalk;
+
+    /* Phase 6 (GDD 3.4): persistent record, shown on the title screen. */
+    int   best_alt;      /* saved max altitude, meters */
+    int   lifetime_falls;
+    const char *initials;  /* 3 chars, NULL hides the record line */
 } render_hud_t;
 
 void render_init(void);
