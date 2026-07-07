@@ -5,6 +5,7 @@
 #include "render.h"
 #include "climber_render.h"
 #include "campsite_render.h"
+#include "scatter_render.h"
 #include "title_render.h"
 #include "../gen/mountain.h"
 #include "../sim/campsite.h"
@@ -124,6 +125,7 @@ void render_init(void) {
 
     climber_render_init();
     campsite_render_init();
+    scatter_render_init();
     title_render_init();
 
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
@@ -260,6 +262,12 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     t3d_matrix_pop(1);
 
     climber_render_draw();
+    /* Trees, rocks and boulders before the campfire: the fire pass
+     * clears the light state for its unlit flames, so the scatter must
+     * draw while the sun + fire lights are still bound. Title mode is a
+     * far orbit of the bare massif, so skip the dressing there. */
+    if (!hud->title)
+        scatter_render_draw(eye, target);
     campsite_render_draw();
 
     if (hud->title) {

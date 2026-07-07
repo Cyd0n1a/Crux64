@@ -96,3 +96,8 @@ hardware via a flashcart.
       under the procedural wind/heartbeat/SFX. The in-game track is
       larger than RAM, so it streams from the ROM filesystem; the drone
       bed steps aside whenever a track is playing
+- [x] Terrain scatter — proctree-generated stunted conifers along the
+      lower slopes (thinning to a treeline), plus procedural mossy rocks
+      and the occasional boulder. Placed once from the fixed seed on
+      gentle-enough ground, clear of base camp; drawn as bake-once
+      instanced meshes with per-kind distance culling

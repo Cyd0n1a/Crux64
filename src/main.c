@@ -50,6 +50,7 @@
 #include "audio/music.h"
 #include "gen/mountain.h"
 #include "gen/grips.h"
+#include "gen/scatter.h"
 #include "sim/climber.h"
 #include "meta/save.h"
 #include "render/render.h"
@@ -78,7 +79,8 @@ int main(void) {
     long long gen_start = timer_ticks();
     mountain_generate();
     grips_generate();
-    climber_init();
+    climber_init();     /* also pitches base camp, which scatter avoids */
+    scatter_generate(); /* trees, rocks and boulders across the lower flanks */
     float gen_ms = (float)TIMER_MICROS_LL(timer_ticks() - gen_start) / 1000.f;
 
     render_init();

@@ -1,3 +1,3 @@
 #pragma once
 
-#define CRUX64_VERSION "v0.7-alpha"
+#define CRUX64_VERSION "v0.8-alpha"

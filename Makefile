@@ -18,12 +18,16 @@ OBJS = \
     $(BUILD_DIR)/src/gen/noise.o \
     $(BUILD_DIR)/src/gen/mountain.o \
     $(BUILD_DIR)/src/gen/grips.o \
+    $(BUILD_DIR)/src/gen/scatter.o \
+    $(BUILD_DIR)/src/gen/proctree.o \
+    $(BUILD_DIR)/src/gen/tree_gen.o \
     $(BUILD_DIR)/src/sim/climber.o \
     $(BUILD_DIR)/src/sim/campsite.o \
     $(BUILD_DIR)/src/meta/save.o \
     $(BUILD_DIR)/src/render/render.o \
     $(BUILD_DIR)/src/render/climber_render.o \
     $(BUILD_DIR)/src/render/campsite_render.o \
+    $(BUILD_DIR)/src/render/scatter_render.o \
     $(BUILD_DIR)/src/render/title_render.o
 
 # Background music (GDD 3.3): the MP3s under assets/ are copied verbatim into
@@ -39,6 +43,9 @@ filesystem/%.mp3: assets/%.mp3
 
 # minimp3 is vendored third-party code; don't hold it to our -Werror.
 $(BUILD_DIR)/src/audio/minimp3.o: CFLAGS += -Wno-error -w
+
+# proctree (Paul Brunt / Jari Komppa, 3-clause BSD) is vendored too.
+$(BUILD_DIR)/src/gen/proctree.o: CXXFLAGS += -Wno-error -w
 
 crux64.z64: $(BUILD_DIR)/crux64.elf
 crux64.z64: $(BUILD_DIR)/crux64.dfs
