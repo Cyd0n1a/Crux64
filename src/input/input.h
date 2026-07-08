@@ -29,7 +29,9 @@ typedef struct {
     bool  rest;            /* R pressed this frame */
     bool  rest_held;       /* R held: shake out the selected limb */
     bool  chalk;           /* A pressed this frame */
-    bool  start_btn;       /* Start pressed this frame (title screen) */
+    bool  a_btn;           /* A pressed this frame (menus / dialogue advance) */
+    bool  b_btn;           /* B pressed this frame (dialogue advance) */
+    bool  start_btn;       /* Start pressed this frame (title / skip) */
 
     int8_t cam_x;          /* D-pad free-look: -1/0/1 per axis */
     int8_t cam_y;

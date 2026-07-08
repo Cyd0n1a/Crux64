@@ -9,6 +9,7 @@ typedef struct {
     const char *status;  /* mode/limb line, NULL to hide */
     int   grip_count;
     bool  title;         /* title screen: far fog, cube logo, no HUD */
+    bool  cinematic;     /* prologue: draw the scene + dialogue box, no dev HUD */
 
     /* Phase 4 (GDD 4): per-limb stamina meter + inventory corner. */
     const float *stam;   /* LIMB_COUNT staminas, NULL hides the bars */

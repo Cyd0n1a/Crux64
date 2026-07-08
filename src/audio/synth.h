@@ -29,3 +29,4 @@ void synth_place(float vel);      /* hand/foot on rock: brown-noise thud */
 void synth_piton(void);           /* metallic strike + low sine thud */
 void synth_impact(float hard);    /* body thud on landing / rope catch */
 void synth_chalk(void);           /* soft chalk exhale */
+void synth_blip(void);            /* dialogue typewriter tick: muffled speech-percussion */

@@ -7,6 +7,7 @@
 #include "campsite_render.h"
 #include "scatter_render.h"
 #include "title_render.h"
+#include "../meta/dialogue.h"
 #include "../gen/mountain.h"
 #include "../sim/campsite.h"
 #include "../version.h"
@@ -127,6 +128,7 @@ void render_init(void) {
     campsite_render_init();
     scatter_render_init();
     title_render_init();
+    dialogue_init();
 
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(FONT_BUILTIN_DEBUG_MONO, font);
@@ -273,6 +275,10 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     if (hud->title) {
         title_render_draw(eye, target);
         draw_title_hud(hud);
+    } else if (hud->cinematic) {
+        /* Prologue: the base-camp scene plays behind the dialogue box; the
+         * dev HUD stays hidden so the frame reads cinematic. */
+        dialogue_draw();
     } else {
         draw_hud(hud);
     }

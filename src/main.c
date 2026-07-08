@@ -53,6 +53,8 @@
 #include "gen/scatter.h"
 #include "sim/climber.h"
 #include "meta/save.h"
+#include "meta/dialogue.h"
+#include "meta/prologue.h"
 #include "render/render.h"
 
 int main(void) {
@@ -102,6 +104,13 @@ int main(void) {
     bool  in_title  = true;
     float title_ang = 0.f;
 
+    /* Prologue (Scene 01, "The Morning After"): a base-camp cutscene that
+     * plays once on New Game — the camera holds the player's dawn view of
+     * Mt. Xerxes while Maya's headset call types out in the dialogue box.
+     * Skippable with Start; hands control to the climber when it ends. */
+    bool  in_prologue = false;
+    float scene_t     = 0.f;
+
     long long prev = timer_ticks();
 
     while (1) {
@@ -119,7 +128,12 @@ int main(void) {
             T3DVec3 eye = {{ sinf(title_ang) * 360.f, 170.f,
                              cosf(title_ang) * 360.f }};
             if (in->start_btn) {
-                in_title = false;
+                in_title    = false;
+                in_prologue = true;
+                scene_t     = 0.f;
+                int nlines;
+                const dlg_line_t *lines = prologue_scene(&nlines);
+                dialogue_start(lines, nlines);
                 rumble_kick(0.4f, 0.2f);
                 synth_chalk();
                 music_play(MUSIC_GAME);   /* swap the title loop for the climb */
@@ -142,6 +156,48 @@ int main(void) {
                 .initials       = sv->initials,
             };
             render_frame(&eye, &target, &hud);
+            continue;
+        }
+
+        if (in_prologue) {
+            scene_t += dt;
+
+            /* Hold the player's first-person dawn view: stand at the neck,
+             * look up the wall at the peak, with a slow cinematic push-in.
+             * The mountain sits in front of the climber, opposite the wall
+             * normal (which points outward, from rock to climber). */
+            float fdx = -cs->wall_n[0], fdz = -cs->wall_n[2];
+            float fl = sqrtf(fdx * fdx + fdz * fdz);
+            if (fl > 1e-4f) { fdx /= fl; fdz /= fl; }
+
+            float push = 4.0f - 1.2f * (1.f - expf(-scene_t * 0.15f));
+            T3DVec3 eye = {{
+                cs->neck[0] - fdx * push,
+                cs->neck[1] + 1.9f + 0.4f * (1.f - expf(-scene_t * 0.1f)),
+                cs->neck[2] - fdz * push,
+            }};
+            T3DVec3 target = {{
+                cs->neck[0] + fdx * 42.f, 96.f, cs->neck[2] + fdz * 42.f,
+            }};
+
+            dialogue_update(in, dt);
+
+            /* Calm base-camp ambience — gentle wind, the campfire flicker
+             * lights the scene (render_frame drives the fire light). */
+            rumble_update(dt);
+            synth_set_altitude(0.18f);
+            synth_set_stress(0.f);
+            synth_set_falling(false);
+            synth_poll();
+
+            render_hud_t hud = {
+                .cinematic = true,
+                .rumble_ok = in->rumble_present,
+            };
+            render_frame(&eye, &target, &hud);
+
+            if (!dialogue_active())
+                in_prologue = false;   /* next frame: hand over to gameplay */
             continue;
         }
 

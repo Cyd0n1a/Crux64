@@ -160,6 +160,29 @@ void synth_impact(float hard) {
     voice_start(5, &slap);
 }
 
+void synth_blip(void) {
+    /* Typewriter voice for dialogue: a distant, muffled percussive tick that
+     * stands in for speech behind the headset static. A low sine "tap" with a
+     * randomised pitch (so a run of them reads as murmured cadence, not a
+     * monotone beep) layered with a heavily lowpassed brown-noise puff. Kept
+     * very quiet and low-priority so it never fights the wind or the music. */
+    float base = frand(95.f, 165.f);
+    voice_t tap = {
+        .len = (int)(SAMPLE_RATE * 0.036f),
+        .f0 = base, .f1 = base * 0.80f,
+        .wave = W_SINE, .volume = 0.05f,
+        .lp_a = 0.6f, .lp_decay = 0.9990f,
+    };
+    voice_t muffle = {
+        .len = (int)(SAMPLE_RATE * 0.028f),
+        .f0 = 1.f, .f1 = 1.f,
+        .wave = W_BROWN, .volume = 0.035f,
+        .lp_a = 0.07f, .lp_decay = 0.9995f,   /* thick lowpass = "distant" */
+    };
+    voice_start(1, &tap);
+    voice_start(1, &muffle);
+}
+
 void synth_chalk(void) {
     /* Soft, dry exhale of chalk dust: gently filtered noise, low level. */
     voice_t v = {

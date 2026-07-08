@@ -46,6 +46,8 @@ void input_poll(void) {
     st.rest      = btn.r;
     st.rest_held = held.r;
     st.chalk     = btn.a;
+    st.a_btn     = btn.a;
+    st.b_btn     = btn.b;
     st.start_btn = btn.start;
 
     st.cam_x = (held.d_right ? 1 : 0) - (held.d_left ? 1 : 0);
