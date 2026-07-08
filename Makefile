@@ -30,7 +30,8 @@ OBJS = \
     $(BUILD_DIR)/src/render/climber_render.o \
     $(BUILD_DIR)/src/render/campsite_render.o \
     $(BUILD_DIR)/src/render/scatter_render.o \
-    $(BUILD_DIR)/src/render/title_render.o
+    $(BUILD_DIR)/src/render/title_render.o \
+    $(BUILD_DIR)/src/render/sky_render.o
 
 # Background music (GDD 3.3): the MP3s under assets/ are copied verbatim into
 # the ROM filesystem and streamed/decoded at runtime by minimp3 (no audioconv

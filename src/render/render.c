@@ -7,6 +7,7 @@
 #include "campsite_render.h"
 #include "scatter_render.h"
 #include "title_render.h"
+#include "sky_render.h"
 #include "../meta/dialogue.h"
 #include "../gen/mountain.h"
 #include "../sim/campsite.h"
@@ -128,6 +129,7 @@ void render_init(void) {
     campsite_render_init();
     scatter_render_init();
     title_render_init();
+    sky_render_init();
 
     /* Load the builtin mono once (it's a shared static buffer — a second
      * load asserts) and share it with the dialogue box, which only adds
@@ -200,6 +202,10 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     float fog_near = hud->title ? TITLE_FOG_NEAR : FOG_NEAR;
     float fog_far  = hud->title ? TITLE_FOG_FAR  : FOG_FAR;
 
+    /* Occlusion probe for the sun/flare reads the previous frame's depth,
+     * so sample it before this frame clears the buffer. */
+    sky_sun_presample(&zbuf);
+
     t3d_viewport_set_projection(&viewport, CAM_FOV, cam_near, cam_far);
     t3d_viewport_look_at(&viewport, eye, target, &(T3DVec3){{ 0, 1, 0 }});
 
@@ -207,19 +213,22 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     t3d_frame_start();
     t3d_viewport_attach(&viewport);
 
-    rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
-    rdpq_mode_fog(RDPQ_FOG_STANDARD);
-    rdpq_set_fog_color(SKY_COLOR);
-
     t3d_screen_clear_color(SKY_COLOR);
     t3d_screen_clear_depth();
 
+    /* Cloud dome first, as a depth-less backdrop the terrain paints over. */
+    sky_dome_draw(&viewport, eye);
+
+    /* Terrain render state (the dome left its own combiner/blender behind). */
+    rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
+    rdpq_mode_fog(RDPQ_FOG_STANDARD);
+    rdpq_set_fog_color(SKY_COLOR);
     t3d_fog_set_range(fog_near, fog_far);
     t3d_fog_set_enabled(true);
 
     /* Low warm sun + cool skylight ambient (GDD 3.1). */
     t3d_light_set_ambient((uint8_t[]){ 72, 78, 100, 0xFF });
-    T3DVec3 sun_dir = {{ 0.48f, 0.62f, 0.34f }};
+    T3DVec3 sun_dir = SKY_SUN_DIR;
     t3d_vec3_norm(&sun_dir);
     t3d_light_set_directional(0, (uint8_t[]){ 255, 235, 200, 0xFF }, &sun_dir);
 
@@ -279,8 +288,15 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
         scatter_render_draw(eye, target);
     campsite_render_draw();
 
-    if (hud->title) {
+    /* 3D title logo still needs the world render state. */
+    if (hud->title)
         title_render_draw(eye, target);
+
+    /* Lens effect: screen-space, drawn over the whole 3D frame (including the
+     * logo) but under the HUD text so readouts stay crisp. */
+    sky_sun_draw(&viewport, eye);
+
+    if (hud->title) {
         draw_title_hud(hud);
     } else if (hud->cinematic) {
         /* Prologue: the base-camp scene plays behind the dialogue box; the
