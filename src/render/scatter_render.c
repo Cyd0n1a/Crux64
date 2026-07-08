@@ -14,9 +14,9 @@
  * silhouettes; steps=3 on the last makes it a touch bushier. */
 static const struct { int seed, seg, lvl, steps; float twig; }
 TREE_PARAM[SCAT_TREE_VARIANTS] = {
-    { 262, 4, 2, 2, 0.40f },
-    {   7, 4, 2, 2, 0.42f },
-    {  99, 4, 2, 3, 0.37f },
+    { 262, 4, 2, 2, 0.50f },
+    {   7, 4, 2, 2, 0.52f },
+    {  99, 4, 2, 3, 0.46f },
 };
 
 /* Foliage tint per variant (0xRRGGBBAA), deep alpine conifer greens. */
@@ -47,8 +47,15 @@ static rspq_block_t   *boulder_blk[SCAT_BOULDER_VARIANTS];
 static T3DMat4FP *inst_mat;
 static T3DVec3   *inst_center;
 static float     *inst_radius;   /* far-cull bounding radius   */
-static float     *inst_near;     /* skip if the eye is closer  */
 static int        inst_count;
+
+/* Near-skip radius: once the eye is this close, the mesh straddles the
+ * camera near plane. Computed inline (no per-instance array) so the boot
+ * allocation footprint stays identical to the pre-cull build. */
+static inline float inst_near_radius(const scatter_t *s) {
+    return s->kind == SCAT_TREE ? s->scale * 0.5f + 2.5f
+                                : s->scale + 1.6f;
+}
 
 /* ------------------------------------------------------------------ */
 
@@ -74,7 +81,7 @@ static void pack_into(T3DVertPacked *buf, int v, const float p[3],
  * fixed-point-friendly unit space and scaled by the instance matrix.
  * VSCALE bakes the unit mesh at a larger integer size so the int16
  * vertex positions keep precision; matrices divide it back out. */
-#define VSCALE 64.f
+#define VSCALE 256.f
 
 static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
                                const uint32_t *col, int nvert,
@@ -102,6 +109,15 @@ static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
                 for (int i = 0; i < used; i++) {
                     int o = batch_orig[i];
                     pack_into(buf, i, &pos[o * 3], &nrm[o * 3], col[o]);
+                }
+                /* t3d_vert_load DMAs vertices in even pairs, so an odd
+                 * count pulls one extra, uninitialised half-pack into the
+                 * RSP and transforms it (never drawn — no tri indexes it).
+                 * Fill it with a copy of vert 0 so nothing garbage is
+                 * ever DMA'd. */
+                if (used & 1) {
+                    int o = batch_orig[0];
+                    pack_into(buf, used, &pos[o * 3], &nrm[o * 3], col[o]);
                 }
                 t3d_vert_load(buf, 0, used);
                 for (int i = 0; i < ntl; i++)
@@ -149,12 +165,10 @@ static void build_tree(int variant) {
              TREE_PARAM[variant].twig, 2.4f);
 
     int nv = m.nvert + m.ntwigvert;
-    /* Branch faces are closed tubes (back-face cull is correct). Twig
-     * leaf-cards are single quads drawn single-sided too: doubling them
-     * for two-sided foliage tripled the fill-rate cost of the canopy,
-     * which is the RDP's bottleneck here, so we eat the odd missing
-     * back-leaf instead. */
-    int nt = m.nface + m.ntwigface;
+    /* Branch faces once (closed tubes → back-face cull is fine); twig
+     * leaf-cards are single quads, so emit each twig triangle both
+     * windings to show foliage from both sides under one draw state. */
+    int nt = m.nface + m.ntwigface * 2;
 
     float *pos = malloc(sizeof(float) * 3 * nv);
     float *nrm = malloc(sizeof(float) * 3 * nv);
@@ -187,9 +201,11 @@ static void build_tree(int variant) {
         idx[w++] = m.vidx[i * 3 + 2];
     }
     for (int i = 0; i < m.ntwigface; i++) {
-        idx[w++] = m.tidx[i * 3]     + m.nvert;
-        idx[w++] = m.tidx[i * 3 + 1] + m.nvert;
-        idx[w++] = m.tidx[i * 3 + 2] + m.nvert;
+        int a = m.tidx[i * 3] + m.nvert;
+        int b = m.tidx[i * 3 + 1] + m.nvert;
+        int c = m.tidx[i * 3 + 2] + m.nvert;
+        idx[w++] = a; idx[w++] = b; idx[w++] = c;
+        idx[w++] = a; idx[w++] = c; idx[w++] = b;   /* back side */
     }
 
     tree_blk[variant].blk    = bake_mesh(pos, nrm, col, nv, idx, nt);
@@ -269,14 +285,6 @@ static void build_instance_matrix(int out, const scatter_t *s, float mesh_h) {
                                    s->pos[2] }};
     inst_radius[out] = s->kind == SCAT_TREE ? s->scale * 0.7f
                                             : s->scale * 1.3f;
-
-    /* Near-skip radius: once the eye is this close, the mesh straddles
-     * the camera near plane and the perspective divide of near-zero-w
-     * verts overruns the guard band and locks the RDP. Drop the whole
-     * instance before that — you can't see a tree you're standing in
-     * anyway. Sized to the object's horizontal reach + the near plane. */
-    inst_near[out] = s->kind == SCAT_TREE ? s->scale * 0.5f + 2.5f
-                                          : s->scale + 1.6f;
 }
 
 void scatter_render_init(void) {
@@ -291,7 +299,6 @@ void scatter_render_init(void) {
     inst_mat    = malloc_uncached(sizeof(T3DMat4FP) * inst_count);
     inst_center = malloc(sizeof(T3DVec3) * inst_count);
     inst_radius = malloc(sizeof(float) * inst_count);
-    inst_near   = malloc(sizeof(float) * inst_count);
 
     for (int i = 0; i < inst_count; i++) {
         const scatter_t *s = scatter_get(i);
@@ -341,8 +348,10 @@ void scatter_render_draw(const T3DVec3 *eye, const T3DVec3 *target) {
                         inst_center[i].v[2] - eye->v[2] }};
         float d2 = t3d_vec3_dot(&to, &to);
 
-        /* Crash guard: never draw an instance the eye is inside. */
-        if (d2 < inst_near[i] * inst_near[i])
+        /* Crash guard: never draw an instance the eye is inside (its
+         * geometry would straddle the near plane). */
+        float near = inst_near_radius(s);
+        if (d2 < near * near)
             continue;
 
         float reach = KIND_DIST[s->kind] + inst_radius[i];
