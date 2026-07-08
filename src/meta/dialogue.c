@@ -5,10 +5,11 @@
 #include <string.h>
 #include <math.h>
 
-/* Its own font handle so the debug-HUD mono (font id 1) keeps its plain
- * white style while dialogue gets amber speakers and dimmed narration. */
-#define DLG_FONT      3
-#define STY_TEXT      0   /* body / speech        */
+/* Dialogue shares the debug-HUD mono font (id 1); it only adds extra
+ * styles, which the HUD never uses (it prints with the default style 0).
+ * The builtin font is a shared static buffer and can't be loaded twice. */
+#define DLG_FONT      FONT_BUILTIN_DEBUG_MONO
+#define STY_TEXT      0   /* body / speech (font default, white) */
 #define STY_SPEAKER   1   /* warm amber name      */
 #define STY_DIM       2   /* narration + prompts  */
 
@@ -43,12 +44,11 @@ static inline uint32_t srnd(void) {
     return g_stat;
 }
 
-void dialogue_init(void) {
-    rdpq_font_t *f = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
-    rdpq_text_register_font(DLG_FONT, f);
-    rdpq_font_style(f, STY_TEXT,    &(rdpq_fontstyle_t){ .color = RGBA32(238, 240, 245, 255) });
-    rdpq_font_style(f, STY_SPEAKER, &(rdpq_fontstyle_t){ .color = RGBA32(240, 196, 108, 255) });
-    rdpq_font_style(f, STY_DIM,     &(rdpq_fontstyle_t){ .color = RGBA32(150, 158, 176, 255) });
+void dialogue_init(rdpq_font_t *font) {
+    /* Style 0 is the font default (white) the HUD already uses — leave it.
+     * Add the two dialogue-only styles on top. */
+    rdpq_font_style(font, STY_SPEAKER, &(rdpq_fontstyle_t){ .color = RGBA32(240, 196, 108, 255) });
+    rdpq_font_style(font, STY_DIM,     &(rdpq_fontstyle_t){ .color = RGBA32(150, 158, 176, 255) });
 }
 
 void dialogue_start(const dlg_line_t *lines, int count) {

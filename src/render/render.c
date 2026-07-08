@@ -128,10 +128,13 @@ void render_init(void) {
     campsite_render_init();
     scatter_render_init();
     title_render_init();
-    dialogue_init();
 
+    /* Load the builtin mono once (it's a shared static buffer — a second
+     * load asserts) and share it with the dialogue box, which only adds
+     * its own extra styles on top of the HUD's default. */
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(FONT_BUILTIN_DEBUG_MONO, font);
+    dialogue_init(font);
 }
 
 static void draw_hud(const render_hud_t *hud) {

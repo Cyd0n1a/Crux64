@@ -30,7 +30,12 @@ typedef struct {
     dlg_style_t style;
 } dlg_line_t;
 
-void dialogue_init(void);   /* load + style the dialogue font; call once at boot */
+/* Add the dialogue styles (amber speakers, dim narration) to the already
+ * loaded HUD font. The builtin fonts are shared static buffers, so they
+ * must be loaded exactly once — the caller owns the load + registration
+ * and passes the handle here. Call once at boot. */
+struct rdpq_font_s;
+void dialogue_init(struct rdpq_font_s *font);
 
 /* Begin a scene. The lines array must outlive the scene (use static data). */
 void dialogue_start(const dlg_line_t *lines, int count);
