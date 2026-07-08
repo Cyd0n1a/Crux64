@@ -267,8 +267,12 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     /* Trees, rocks and boulders before the campfire: the fire pass
      * clears the light state for its unlit flames, so the scatter must
      * draw while the sun + fire lights are still bound. Title mode is a
-     * far orbit of the bare massif, so skip the dressing there. */
-    if (!hud->title)
+     * far orbit of the bare massif, so skip the dressing there. The
+     * prologue also skips it: that camera parks down among the trees at
+     * base camp, and the near-camera tree overdraw still trips the
+     * tiny3d RSP-queue corruption (the deferred scatter perf pass owns
+     * the real fix) — so keep the cutscene on the safe subset. */
+    if (!hud->title && !hud->cinematic)
         scatter_render_draw(eye, target);
     campsite_render_draw();
 
