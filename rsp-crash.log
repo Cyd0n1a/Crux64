@@ -1,0 +1,26 @@
+RSP CRASH : rsp_queue : rspq_next_buffer (src/rspq/rspq.c:951)
+RSP ASSERTION FAILED (0xff01) - Invalid overlay
+Overlay 0x20 not registered
+PC:27c : STATUS:5003 [halt broke sig5 sig7 ] : DP_STATUS: e8 [gclk pipe busy ready ]
+-------------------------------------------------------GP Registers--
+zr:00000000 at:FF010000 v0:00000000 v1:08D18040 a0:BE010CFE
+a1:00000F4C a2:00000F70 a3:0000CD00 t0:00000020 t1:00000001
+t2:00000000 t3:000080FF t4:00000000 t5:0000017C t6:00000000
+t7:00000000 t8:00000E94 t9:00000000 s0:0006A750 s1:0000000B
+s2:000003A0 s3:00000DE0 s4:000000E8 s5:00000F4C s6:00000F4C
+s7:000000B0 gp:00000030 sp:00000000 fp:00000DA3 ra:00001A28
+-----------------------------------------------------COP0 Registers--
+$c0  DMA_SPADDR       00001ab8        :  $c8  DP_START         00289880
+$c1  DMA_RAMADDR      0006aea0        :  $c9  DP_END           0028c750
+$c2  DMA_READ         00000ff8        :  $c10 DP_CURRENT       0028c750
+$c3  DMA_WRITE        00000ff8        :  $c11 DP_STATUS        000000e8
+$c4  SP_STATUS        00005003        :  $c12 DP_CLOCK         00ffffff
+$c5  DMA_FULL         00000000        :  $c13 DP_BUSY          00000000
+$c6  DMA_BUSY         00000000        :  $c14 DP_PIPE_BUSY     00ffffff
+$c7  SEMAPHORE        00000000        :  $c15 DP_TMEM_BUSY     00000000
+-------------------------------------------------------Ucode data----
+RSPQ: Normal  DRAM address: 00278430
+RSPQ: Highpri DRAM address: 02279468
+RSPQ: Current DRAM address: 022fa628 + GP=30 = 022fa658
+RSPQ: RDP     DRAM address: 00279860
+RSPQ: Current Overlay: rsp_tiny3d (1)

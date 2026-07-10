@@ -1,0 +1,14 @@
+CPU Assertion
+
+ASSERTION FAILED: Trying to load already loaded font data
+(buf=0x80070480, sz=00000ca8)
+
+Failed expression:
+    memcmp(fnt->magic, FONT_MAGIC_LOADED, 3)
+
+Backtrace:
+    rdpq_font_load_buf (libdragon/src/rdpq/rdpq_font.c:170)
+    rdpq_font_load_builtin (...64-elf/include/rdpq_font.h:95)
+    render_init (src/render/render.c:133)
+    main (src/main.c:88)
+    __text_start (??:0)
