@@ -12,9 +12,17 @@
 #define GRIP_SLOPE_MAX  0.70f   /* 45°+ only: gentler ground is a walk/
                                    scramble where the wall-climb posture
                                    degenerates (hands can't reach rock) */
-#define GRIP_STEP       (MTN_CELL_SIZE / 10.f)   /* 0.6m */
+/* Grip sampling spacing is pinned in world metres (not a fraction of the
+ * cell) so density stays constant if the world is rescaled — after the 2x
+ * footprint bump a cell-relative step would have doubled to 1.2m and halved
+ * the grip density. GRIP_SUBS is the sub-samples/axis that tile one cell. */
+#define GRIP_STEP       0.7f
+#define GRIP_SUBS       ((int)(MTN_CELL_SIZE / GRIP_STEP + 0.5f))   /* 17 @ 12m */
 #define GRIP_MASK_FREQ  1.05f
-#define GRIP_MASK_MIN   0.0f
+#define GRIP_MASK_MIN   (-0.15f)  /* ~60% acceptance: the coarser 0.7m grid
+                                     puts diagonal neighbours past arm reach,
+                                     so accept a few more holds to keep the
+                                     reach-radius graph above percolation */
 
 static grip_t grips[GRIP_MAX];
 static int    n_grips;
@@ -74,8 +82,8 @@ void grips_generate(void) {
 
             float x0 = cx * MTN_CELL_SIZE - MTN_HALF;
             float z0 = cz * MTN_CELL_SIZE - MTN_HALF;
-            for (int sz = 0; sz < 10; sz++) {
-                for (int sx = 0; sx < 10; sx++) {
+            for (int sz = 0; sz < GRIP_SUBS; sz++) {
+                for (int sx = 0; sx < GRIP_SUBS; sx++) {
                     float x = x0 + (sx + 0.5f) * GRIP_STEP;
                     float z = z0 + (sz + 0.5f) * GRIP_STEP;
                     /* Jitter breaks the sample grid so holds read organic. */

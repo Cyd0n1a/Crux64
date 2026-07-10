@@ -14,10 +14,19 @@
 #define MTN_CELLS       (MTN_CHUNKS * MTN_CHUNK_CELLS)   /* 56 */
 #define MTN_VERTS       (MTN_CELLS + 1)                  /* 57 */
 
-#define MTN_CELL_SIZE   6.f           /* world units (~meters) per cell */
-#define MTN_SIZE        (MTN_CELLS * MTN_CELL_SIZE)      /* 336 */
+#define MTN_CELL_SIZE   12.f          /* world units (~meters) per cell */
+#define MTN_SIZE        (MTN_CELLS * MTN_CELL_SIZE)      /* 672 */
 #define MTN_HALF        (MTN_SIZE * 0.5f)
-#define MTN_PEAK_H      240.f
+#define MTN_PEAK_H      480.f         /* scaled with the footprint so the
+                                         mountain keeps its slope/proportions */
+
+/* World boundary: a solid cylindrical cliff wall rings the footprint. The
+ * radius is the inscribed circle (touches the square's edge midpoints, stays
+ * inside at the corners) so the base always rests on real terrain. The
+ * on-foot walker is clamped radially to this, so the wall is the true edge
+ * of the world; WORLD_WALL_H is ~2x the climber's standing height. */
+#define WORLD_WALL_R    (MTN_HALF - 2.f)   /* 334 m */
+#define WORLD_WALL_H    3.5f               /* wall height above the ground */
 
 void  mountain_generate(void);
 

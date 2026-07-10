@@ -5,8 +5,11 @@
  * the heightmap, bucketed per terrain cell for fast radius queries.
  * Pure C + math.h — host-testable like the rest of src/gen/. */
 
-/* ~1.6MB of Expansion Pak RAM including bucket indices. */
-#define GRIP_MAX 49152
+/* Expansion Pak RAM (~5MB incl. bucket indices, 32 bytes/grip). Sized for
+ * the 2x-scaled world at 0.7m grip spacing: ~153k grips (measured, fixed
+ * seed) with headroom. Above the GDD's original ~1.6MB budget because the
+ * footprint grew 4x in area — density is preserved, so the count follows. */
+#define GRIP_MAX 163840
 
 typedef struct {
     float pos[3];   /* on the render mesh surface */

@@ -678,6 +678,14 @@ static void walk_update(const input_state_t *in, float cam_yaw, float dt) {
         if (nz < -MTN_HALF + 1.f) nz = -MTN_HALF + 1.f;
         if (nz >  MTN_HALF - 1.f) nz =  MTN_HALF - 1.f;
 
+        /* Solid boundary wall: keep the walker's body inside the ring. */
+        const float wall_lim = WORLD_WALL_R - 0.35f;   /* body half-width */
+        float r2 = nx * nx + nz * nz;
+        if (r2 > wall_lim * wall_lim) {
+            float inv = wall_lim / sqrtf(r2);
+            nx *= inv; nz *= inv;
+        }
+
         float gn[3];
         mountain_surface(nx, nz, gn);
         if (gn[1] >= WALK_SLOPE_MIN) {   /* too steep to walk = a wall */

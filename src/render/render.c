@@ -6,6 +6,7 @@
 #include "climber_render.h"
 #include "campsite_render.h"
 #include "scatter_render.h"
+#include "wall_render.h"
 #include "title_render.h"
 #include "sky_render.h"
 #include "../meta/dialogue.h"
@@ -42,6 +43,12 @@ static T3DMat4FP  *model_mat;
 /* Static mesh: verts baked once at boot, one recorded block per chunk. */
 static T3DVertPacked *chunk_verts[NUM_CHUNKS];
 static rspq_block_t  *chunk_dpl[NUM_CHUNKS];
+
+/* Dev CPU meter: frame-start tick stamp + the smoothed busy fraction. The
+ * frame's only vsync stall is the framebuffer wait in display_get(), so
+ * busy time = frame period - that idle. */
+static uint32_t cpu_prev_ticks;
+static float    cpu_pct;
 static T3DVec3        chunk_center[NUM_CHUNKS];
 static float          chunk_radius[NUM_CHUNKS];
 static int            chunks_drawn;
@@ -128,6 +135,7 @@ void render_init(void) {
     climber_render_init();
     campsite_render_init();
     scatter_render_init();
+    wall_render_init();
     title_render_init();
     sky_render_init();
 
@@ -169,6 +177,16 @@ static void draw_hud(const render_hud_t *hud) {
                      "gen %.0fms  grips %d  chunks %d/%d  fps %.1f",
                      hud->gen_ms, hud->grip_count, chunks_drawn, NUM_CHUNKS,
                      display_get_fps());
+    /* Overall RAM in use (total minus free heap, so the static grip arrays
+     * below the heap are counted too) + heap alone + smoothed CPU load. */
+    heap_stats_t heap;
+    sys_get_heap_stats(&heap);
+    int mem_total = get_memory_size();
+    int mem_used  = mem_total - (heap.total - heap.used);
+    rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 46,
+                     "mem %.1f/%dM  heap %dK  cpu %.0f%%",
+                     mem_used / 1048576.f, mem_total >> 20,
+                     heap.used >> 10, cpu_pct);
     if (hud->status)
         rdpq_text_printf(NULL, FONT_BUILTIN_DEBUG_MONO, 16, 204,
                          "%s", hud->status);
@@ -197,6 +215,12 @@ static void draw_title_hud(const render_hud_t *hud) {
 
 void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
                   const render_hud_t *hud) {
+    /* CPU meter: period between successive frames (render_frame runs once per
+     * loop in every mode), used with the display_get() idle below. */
+    uint32_t fstart  = TICKS_READ();
+    uint32_t cpu_period = (uint32_t)TICKS_DISTANCE(cpu_prev_ticks, fstart);
+    cpu_prev_ticks = fstart;
+
     float cam_near = hud->title ? TITLE_NEAR     : CAM_NEAR;
     float cam_far  = hud->title ? TITLE_FAR      : CAM_FAR;
     float fog_near = hud->title ? TITLE_FOG_NEAR : FOG_NEAR;
@@ -209,7 +233,17 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     t3d_viewport_set_projection(&viewport, CAM_FOV, cam_near, cam_far);
     t3d_viewport_look_at(&viewport, eye, target, &(T3DVec3){{ 0, 1, 0 }});
 
-    rdpq_attach(display_get(), &zbuf);
+    /* display_get() blocks until a framebuffer frees — the CPU's only stall
+     * once it runs ahead of the RDP, so measure it as this frame's idle. */
+    uint32_t idle_t0 = TICKS_READ();
+    surface_t *disp  = display_get();
+    uint32_t idle    = (uint32_t)TICKS_SINCE(idle_t0);
+    int busy = (int)cpu_period - (int)idle;
+    if (busy < 0) busy = 0;
+    float pct = cpu_period ? 100.f * (float)busy / (float)cpu_period : 0.f;
+    cpu_pct += (pct - cpu_pct) * 0.1f;   /* light smoothing */
+
+    rdpq_attach(disp, &zbuf);
     t3d_frame_start();
     t3d_viewport_attach(&viewport);
 
@@ -273,6 +307,11 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
         rspq_block_run(chunk_dpl[ci]);
         chunks_drawn++;
     }
+    /* World-boundary cliff wall, in the same identity model space as the
+     * terrain. Skipped on the title screen: that camera orbits outside the
+     * ring, where a containing wall would read as an artificial box. */
+    if (!hud->title)
+        wall_render_draw();
     t3d_matrix_pop(1);
 
     climber_render_draw();

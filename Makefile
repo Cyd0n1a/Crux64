@@ -30,6 +30,7 @@ OBJS = \
     $(BUILD_DIR)/src/render/climber_render.o \
     $(BUILD_DIR)/src/render/campsite_render.o \
     $(BUILD_DIR)/src/render/scatter_render.o \
+    $(BUILD_DIR)/src/render/wall_render.o \
     $(BUILD_DIR)/src/render/title_render.o \
     $(BUILD_DIR)/src/render/sky_render.o
 
