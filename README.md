@@ -1,4 +1,4 @@
-# Crux64
+# Crux64 ⛰️
 
 A physics-based, procedurally generated 3D mountain climbing simulation for
 the Nintendo 64. Control the individual limbs of a stick-figure climber to
