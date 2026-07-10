@@ -60,8 +60,8 @@ git submodule update --init
 bash build.sh        # may need sudo if your user isn't in the docker group
 ```
 
-Produces `crux64.z64`. Run it in [ares](https://ares-emu.net/) or on real
-hardware via a flashcart.
+Produces `crux64.z64`. Run it in [Gopher64](https://github.com/gopher64/gopher64), [ares](https://ares-emu.net/), or on real
+hardware via a N64 flashcart such as a Summercart.
 
 ## Status
 
