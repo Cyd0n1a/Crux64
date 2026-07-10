@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /* Terrain scatter (GDD 1.2 "procedural yet permanent", 3.2): stunted
@@ -30,6 +31,11 @@ typedef struct {
 void scatter_generate(void);
 int  scatter_count(void);
 const scatter_t *scatter_get(int i);
+
+/* Cylindrical trunk colliders: push an XZ point out of any tree it has
+ * entered. body_r is the mover's own radius. Returns true if the point
+ * moved. Cheap linear scan (<= MAX_TREES), for the on-foot walker. */
+bool scatter_push_out(float *x, float *z, float body_r);
 
 /* How many mesh variants the renderer should build per kind. */
 #define SCAT_TREE_VARIANTS    3

@@ -3,6 +3,7 @@
 #include "vec3.h"
 #include "../gen/mountain.h"
 #include "../gen/grips.h"
+#include "../gen/scatter.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -700,6 +701,9 @@ static void walk_update(const input_state_t *in, float cam_yaw, float dt) {
                 }
             }
         }
+
+        /* ...nor through tree trunks. */
+        scatter_push_out(&cl.hip[0], &cl.hip[2], 0.25f);
 
         /* Turn toward the movement direction (shortest way around). */
         float want = atan2f(mx, mz);

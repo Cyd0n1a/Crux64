@@ -164,3 +164,28 @@ void scatter_generate(void) {
 int scatter_count(void) { return n_items; }
 
 const scatter_t *scatter_get(int i) { return &items[i]; }
+
+/* Trunk collision radius for a tree of the given world height. A conifer
+ * this size has a slim bole; the walker bumps the trunk, not the canopy
+ * spread (which the renderer culls at scale*0.7). */
+#define TREE_TRUNK_R(h) (0.16f + (h) * 0.05f)
+
+bool scatter_push_out(float *x, float *z, float body_r) {
+    bool moved = false;
+    for (int i = 0; i < n_items; i++) {
+        const scatter_t *s = &items[i];
+        if (s->kind != SCAT_TREE)
+            continue;
+        float r  = TREE_TRUNK_R(s->scale) + body_r;
+        float dx = *x - s->pos[0];
+        float dz = *z - s->pos[2];
+        float d2 = dx * dx + dz * dz;
+        if (d2 < r * r && d2 > 1e-6f) {
+            float inv = r / sqrtf(d2);
+            *x = s->pos[0] + dx * inv;
+            *z = s->pos[2] + dz * inv;
+            moved = true;
+        }
+    }
+    return moved;
+}
