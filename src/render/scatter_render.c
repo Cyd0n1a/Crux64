@@ -36,11 +36,20 @@ static const float KIND_DIST[SCAT_KIND_COUNT] = {
  * 4:3 aspect ≈ 80° across, plus margin so nothing pops at the edges). */
 #define FRUSTUM_TAN 1.20f
 
-typedef struct { rspq_block_t *blk; float height; } tree_mesh_blk_t;
+/* A tree is two draws: bark branches (untextured, culled) and leaf cards
+ * (textured, alpha-cutout, no cull). They stay separate blocks so each can
+ * carry its own RDP state. */
+typedef struct { rspq_block_t *branch, *twig; float height; } tree_mesh_blk_t;
 
 static tree_mesh_blk_t tree_blk[SCAT_TREE_VARIANTS];
 static rspq_block_t   *rock_blk[SCAT_ROCK_VARIANTS];
 static rspq_block_t   *boulder_blk[SCAT_BOULDER_VARIANTS];
+
+/* Shared foliage texture (assets/tree-leaves.png -> ROM sprite). One 32x32
+ * RGBA16 tile fits TMEM whole; every leaf card samples it. NULL if the load
+ * fails, in which case trees fall back to bare branches (no crash). */
+static sprite_t *leaf_spr;
+#define LEAF_TEX 32   /* sprite is 32x32; twig UV 0..1 spans the whole tile */
 
 /* One static matrix per scatter instance, and a cached world-space
  * cull sphere (center + radius). */
@@ -60,17 +69,25 @@ static inline float inst_near_radius(const scatter_t *s) {
 /* ------------------------------------------------------------------ */
 
 static void pack_into(T3DVertPacked *buf, int v, const float p[3],
-                      const float nrm[3], uint32_t color) {
+                      const float nrm[3], uint32_t color, const float uv[2]) {
     T3DVec3 n = {{ nrm[0], nrm[1], nrm[2] }};
     t3d_vec3_norm(&n);
     uint16_t norm = t3d_vert_pack_normal(&n);
+    /* ST is 10.5 fixed point in pixel coords; 0..1 UV spans the whole tile. */
+    int16_t s = 0, t = 0;
+    if (uv) {
+        s = (int16_t)(uv[0] * (LEAF_TEX * 32.f));
+        t = (int16_t)(uv[1] * (LEAF_TEX * 32.f));
+    }
     T3DVertPacked *pk = &buf[v / 2];
     if (v & 1) {
         pk->posB[0] = (int16_t)p[0]; pk->posB[1] = (int16_t)p[1];
         pk->posB[2] = (int16_t)p[2]; pk->normB = norm; pk->rgbaB = color;
+        pk->stB[0] = s; pk->stB[1] = t;
     } else {
         pk->posA[0] = (int16_t)p[0]; pk->posA[1] = (int16_t)p[1];
         pk->posA[2] = (int16_t)p[2]; pk->normA = norm; pk->rgbaA = color;
+        pk->stA[0] = s; pk->stA[1] = t;
     }
 }
 
@@ -84,8 +101,8 @@ static void pack_into(T3DVertPacked *buf, int v, const float p[3],
 #define VSCALE 256.f
 
 static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
-                               const uint32_t *col, int nvert,
-                               const int *idx, int ntri) {
+                               const uint32_t *col, const float *uv, int nvert,
+                               const int *idx, int ntri, bool textured) {
     int *slot = malloc(sizeof(int) * nvert);
     for (int i = 0; i < nvert; i++) slot[i] = -1;
     int  batch_orig[70];
@@ -93,6 +110,17 @@ static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
     int used = 0, ntl = 0;
 
     rspq_block_begin();
+    if (textured) {
+        /* Leaf cards: modulate the leaf texture by the shaded vertex tint,
+         * take alpha straight from the texture, and hard-cutout the silhouette.
+         * Fog is off (its blender wants the alpha channel we're using for the
+         * cutout — and trees sit well inside the fog-near plane anyway), and
+         * culling is off so a single winding shows the card from both sides. */
+        rdpq_mode_combiner(RDPQ_COMBINER1((TEX0, 0, SHADE, 0), (0, 0, 0, TEX0)));
+        rdpq_mode_fog(0);
+        rdpq_mode_alphacompare(128);
+        t3d_state_set_drawflags(T3D_FLAG_TEXTURED | T3D_FLAG_SHADED | T3D_FLAG_DEPTH);
+    }
     for (int t = 0; t <= ntri; t++) {
         int v[3] = { 0, 0, 0 }, need = 0;
         bool last = (t == ntri);
@@ -108,7 +136,8 @@ static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
                     malloc_uncached(sizeof(T3DVertPacked) * ((used + 1) / 2));
                 for (int i = 0; i < used; i++) {
                     int o = batch_orig[i];
-                    pack_into(buf, i, &pos[o * 3], &nrm[o * 3], col[o]);
+                    pack_into(buf, i, &pos[o * 3], &nrm[o * 3], col[o],
+                              uv ? &uv[o * 2] : NULL);
                 }
                 /* t3d_vert_load DMAs vertices in even pairs, so an odd
                  * count pulls one extra, uninitialised half-pack into the
@@ -117,7 +146,8 @@ static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
                  * ever DMA'd. */
                 if (used & 1) {
                     int o = batch_orig[0];
-                    pack_into(buf, used, &pos[o * 3], &nrm[o * 3], col[o]);
+                    pack_into(buf, used, &pos[o * 3], &nrm[o * 3], col[o],
+                              uv ? &uv[o * 2] : NULL);
                 }
                 t3d_vert_load(buf, 0, used);
                 for (int i = 0; i < ntl; i++)
@@ -136,6 +166,14 @@ static rspq_block_t *bake_mesh(const float *pos, const float *nrm,
         ntl++;
     }
     t3d_tri_sync();
+    if (textured) {
+        /* Hand the shared terrain/scatter state back untouched so the bark,
+         * rocks and campfire that draw around us are unaffected. */
+        rdpq_mode_alphacompare(0);
+        rdpq_mode_fog(RDPQ_FOG_STANDARD);
+        rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
+        t3d_state_set_drawflags(T3D_FLAG_SHADED | T3D_FLAG_DEPTH | T3D_FLAG_CULL_BACK);
+    }
     rspq_block_t *blk = rspq_block_end();
 
     free(slot);
@@ -158,60 +196,75 @@ static uint32_t jitter_color(uint32_t base, uint32_t h, int amp) {
     return ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
 }
 
+/* Raise a colour toward white by frac (0..1); keeps the hue but lifts the
+ * value so a modulated texture reads through the tint rather than doubling
+ * up on it (a green tint over green leaves goes muddy otherwise). */
+static uint32_t lighten(uint32_t c, float frac) {
+    int r = (int)((c >> 24) & 0xFF), g = (int)((c >> 16) & 0xFF),
+        b = (int)((c >> 8) & 0xFF);
+    r += (int)((255 - r) * frac);
+    g += (int)((255 - g) * frac);
+    b += (int)((255 - b) * frac);
+    return ((uint32_t)r << 24) | ((uint32_t)g << 16) | ((uint32_t)b << 8) | 0xFF;
+}
+
 static void build_tree(int variant) {
     tree_mesh_t m;
     tree_gen(&m, TREE_PARAM[variant].seed, TREE_PARAM[variant].seg,
              TREE_PARAM[variant].lvl, TREE_PARAM[variant].steps,
              TREE_PARAM[variant].twig, 2.4f);
 
-    int nv = m.nvert + m.ntwigvert;
-    /* Branch faces once (closed tubes → back-face cull is fine); twig
-     * leaf-cards are single quads, so emit each twig triangle both
-     * windings to show foliage from both sides under one draw state. */
-    int nt = m.nface + m.ntwigface * 2;
-
-    float *pos = malloc(sizeof(float) * 3 * nv);
-    float *nrm = malloc(sizeof(float) * 3 * nv);
-    uint32_t *col = malloc(sizeof(uint32_t) * nv);
-    int *idx = malloc(sizeof(int) * 3 * nt);
-
     float height = 0.f;
+
+    /* --- Bark branches: closed tubes, back-face culled, untextured. --- */
+    float    *bpos = malloc(sizeof(float) * 3 * m.nvert);
+    float    *bnrm = malloc(sizeof(float) * 3 * m.nvert);
+    uint32_t *bcol = malloc(sizeof(uint32_t) * m.nvert);
     for (int i = 0; i < m.nvert; i++) {
         for (int k = 0; k < 3; k++) {
-            pos[i * 3 + k] = m.vpos[i * 3 + k] * VSCALE;
-            nrm[i * 3 + k] = m.vnrm[i * 3 + k];
+            bpos[i * 3 + k] = m.vpos[i * 3 + k] * VSCALE;
+            bnrm[i * 3 + k] = m.vnrm[i * 3 + k];
         }
         if (m.vpos[i * 3 + 1] > height) height = m.vpos[i * 3 + 1];
-        col[i] = jitter_color(BARK_COLOR, (uint32_t)(i * 2654435761u), 6);
+        bcol[i] = jitter_color(BARK_COLOR, (uint32_t)(i * 2654435761u), 6);
     }
+    int *bidx = malloc(sizeof(int) * 3 * m.nface);
+    for (int i = 0; i < m.nface * 3; i++) bidx[i] = m.vidx[i];
+    tree_blk[variant].branch = bake_mesh(bpos, bnrm, bcol, NULL,
+                                         m.nvert, bidx, m.nface, false);
+    free(bpos); free(bnrm); free(bcol); free(bidx);
+
+    /* --- Leaf cards: textured, alpha-cutout, no cull (a single winding
+     * shows both faces). Each card samples the whole leaf tile; a per-card
+     * mirror breaks the obvious repeat. The tint is a lightened variant
+     * green so the leaf photo's own colour carries through the modulate. --- */
+    uint32_t tint = lighten(FOLIAGE[variant], 0.6f);
+    float    *tpos = malloc(sizeof(float) * 3 * m.ntwigvert);
+    float    *tnrm = malloc(sizeof(float) * 3 * m.ntwigvert);
+    float    *tuv  = malloc(sizeof(float) * 2 * m.ntwigvert);
+    uint32_t *tcol = malloc(sizeof(uint32_t) * m.ntwigvert);
     for (int i = 0; i < m.ntwigvert; i++) {
-        int d = m.nvert + i;
         for (int k = 0; k < 3; k++) {
-            pos[d * 3 + k] = m.tpos[i * 3 + k] * VSCALE;
-            nrm[d * 3 + k] = m.tnrm[i * 3 + k];
+            tpos[i * 3 + k] = m.tpos[i * 3 + k] * VSCALE;
+            tnrm[i * 3 + k] = m.tnrm[i * 3 + k];
         }
         if (m.tpos[i * 3 + 1] > height) height = m.tpos[i * 3 + 1];
-        col[d] = jitter_color(FOLIAGE[variant], (uint32_t)(i * 40503u + 7u), 10);
+        /* proctree emits twigs as 8-vertex cards (two crossed quads); flip
+         * the UV per card so neighbours don't look stamped from one photo. */
+        uint32_t h = (uint32_t)(i / 8) * 2654435761u;
+        float u = m.tuv[i * 2 + 0], v = m.tuv[i * 2 + 1];
+        if (h & 0x10000u) u = 1.f - u;
+        if (h & 0x20000u) v = 1.f - v;
+        tuv[i * 2 + 0] = u; tuv[i * 2 + 1] = v;
+        tcol[i] = jitter_color(tint, (uint32_t)(i * 40503u + 7u), 6);
     }
+    int *tidx = malloc(sizeof(int) * 3 * m.ntwigface);
+    for (int i = 0; i < m.ntwigface * 3; i++) tidx[i] = m.tidx[i];
+    tree_blk[variant].twig = bake_mesh(tpos, tnrm, tcol, tuv,
+                                       m.ntwigvert, tidx, m.ntwigface, true);
+    free(tpos); free(tnrm); free(tuv); free(tcol);
 
-    int w = 0;
-    for (int i = 0; i < m.nface; i++) {
-        idx[w++] = m.vidx[i * 3];
-        idx[w++] = m.vidx[i * 3 + 1];
-        idx[w++] = m.vidx[i * 3 + 2];
-    }
-    for (int i = 0; i < m.ntwigface; i++) {
-        int a = m.tidx[i * 3] + m.nvert;
-        int b = m.tidx[i * 3 + 1] + m.nvert;
-        int c = m.tidx[i * 3 + 2] + m.nvert;
-        idx[w++] = a; idx[w++] = b; idx[w++] = c;
-        idx[w++] = a; idx[w++] = c; idx[w++] = b;   /* back side */
-    }
-
-    tree_blk[variant].blk    = bake_mesh(pos, nrm, col, nv, idx, nt);
     tree_blk[variant].height = height;
-
-    free(pos); free(nrm); free(col); free(idx);
     tree_free(&m);
 }
 
@@ -251,7 +304,7 @@ static rspq_block_t *build_rock(uint32_t seed, bool boulder) {
     for (int f = 0; f < 8; f++)
         for (int k = 0; k < 3; k++)
             idx[f * 3 + k] = face[f][k];
-    return bake_mesh(pos, nrm, col, 6, idx, 8);
+    return bake_mesh(pos, nrm, col, NULL, 6, idx, 8, false);
 }
 
 /* ------------------------------------------------------------------ */
@@ -288,6 +341,10 @@ static void build_instance_matrix(int out, const scatter_t *s, float mesh_h) {
 }
 
 void scatter_render_init(void) {
+    /* DFS is already up (music_init runs first). A NULL here just means the
+     * trees draw bare-branched — never a crash. */
+    leaf_spr = sprite_load("rom:/tree-leaves.sprite");
+
     for (int v = 0; v < SCAT_TREE_VARIANTS; v++)
         build_tree(v);
     for (int v = 0; v < SCAT_ROCK_VARIANTS; v++)
@@ -309,7 +366,6 @@ void scatter_render_init(void) {
 
 static rspq_block_t *block_for(const scatter_t *s) {
     switch (s->kind) {
-        case SCAT_TREE:    return tree_blk[s->variant].blk;
         case SCAT_ROCK:    return rock_blk[s->variant];
         case SCAT_BOULDER: return boulder_blk[s->variant];
         default:           return NULL;
@@ -317,8 +373,17 @@ static rspq_block_t *block_for(const scatter_t *s) {
 }
 
 static void draw_one(int i) {
+    const scatter_t *s = scatter_get(i);
     t3d_matrix_push(&inst_mat[i]);
-    rspq_block_run(block_for(scatter_get(i)));
+    if (s->kind == SCAT_TREE) {
+        rspq_block_run(tree_blk[s->variant].branch);
+        /* Leaf cards need the tile resident; scatter_render_draw uploads it
+         * once before the tree pass. Skip if the texture failed to load. */
+        if (leaf_spr)
+            rspq_block_run(tree_blk[s->variant].twig);
+    } else {
+        rspq_block_run(block_for(s));
+    }
     t3d_matrix_pop(1);
 }
 
@@ -388,6 +453,10 @@ void scatter_render_draw(const T3DVec3 *eye, const T3DVec3 *target) {
         }
     }
 
+    /* Upload the shared leaf tile once, just before the tree pass (rocks
+     * above drew untextured, so nothing needed it yet). */
+    if (ntree > 0 && leaf_spr)
+        rdpq_sprite_upload(TILE0, leaf_spr, NULL);
     for (int t = 0; t < ntree; t++)
         draw_one(tree_cand[t].idx);
 }

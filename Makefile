@@ -44,6 +44,17 @@ filesystem/%.mp3: assets/%.mp3
 	@mkdir -p $(dir $@)
 	@cp $< $@
 
+# Textures (GDD pivot: procgen-first, but authored textures where they earn
+# their keep — e.g. the leaf-card foliage). PNGs under assets/ are converted
+# to N64 sprites by mksprite and streamed from the ROM filesystem. Kept small
+# (<= 2KB) so a whole sprite fits TMEM in one load.
+assets_png    = $(wildcard assets/*.png)
+assets_sprite = $(patsubst assets/%.png,filesystem/%.sprite,$(assets_png))
+
+filesystem/%.sprite: assets/%.png
+	@mkdir -p $(dir $@)
+	@$(N64_INST)/bin/mksprite --format RGBA16 -o filesystem "$<"
+
 # minimp3 is vendored third-party code; don't hold it to our -Werror.
 $(BUILD_DIR)/src/audio/minimp3.o: CFLAGS += -Wno-error -w
 
@@ -52,7 +63,7 @@ $(BUILD_DIR)/src/gen/proctree.o: CXXFLAGS += -Wno-error -w
 
 crux64.z64: $(BUILD_DIR)/crux64.elf
 crux64.z64: $(BUILD_DIR)/crux64.dfs
-$(BUILD_DIR)/crux64.dfs: $(assets_conv)
+$(BUILD_DIR)/crux64.dfs: $(assets_conv) $(assets_sprite)
 $(BUILD_DIR)/crux64.elf: $(OBJS)
 
 clean:

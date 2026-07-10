@@ -20,6 +20,15 @@ static float *copy_vec3(const Proctree::fvec3 *src, int n) {
     return dst;
 }
 
+static float *copy_vec2(const Proctree::fvec2 *src, int n) {
+    float *dst = (float *)malloc(sizeof(float) * 2 * n);
+    for (int i = 0; i < n; i++) {
+        dst[i * 2 + 0] = src[i].u;
+        dst[i * 2 + 1] = src[i].v;
+    }
+    return dst;
+}
+
 static int *copy_ivec3(const Proctree::ivec3 *src, int n) {
     int *dst = (int *)malloc(sizeof(int) * 3 * n);
     for (int i = 0; i < n; i++) {
@@ -56,12 +65,13 @@ extern "C" void tree_gen(tree_mesh_t *out, int seed, int segments,
     out->vidx = copy_ivec3(tree.mFace,      tree.mFaceCount);
     out->tpos = copy_vec3(tree.mTwigVert,   tree.mTwigVertCount);
     out->tnrm = copy_vec3(tree.mTwigNormal, tree.mTwigVertCount);
+    out->tuv  = copy_vec2(tree.mTwigUV,     tree.mTwigVertCount);
     out->tidx = copy_ivec3(tree.mTwigFace,  tree.mTwigFaceCount);
     /* tree's own new[] buffers are released by its destructor here. */
 }
 
 extern "C" void tree_free(tree_mesh_t *m) {
     free(m->vpos); free(m->vnrm); free(m->vidx);
-    free(m->tpos); free(m->tnrm); free(m->tidx);
+    free(m->tpos); free(m->tnrm); free(m->tuv); free(m->tidx);
     memset(m, 0, sizeof(*m));
 }

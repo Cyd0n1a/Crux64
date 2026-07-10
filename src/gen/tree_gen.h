@@ -21,6 +21,7 @@ typedef struct {
     float *vpos, *vnrm;         /* nvert * 3 floats */
     int   *vidx;                /* nface * 3 ints  */
     float *tpos, *tnrm;         /* ntwigvert * 3 floats */
+    float *tuv;                 /* ntwigvert * 2 floats (0..1 per leaf card) */
     int   *tidx;                /* ntwigface * 3 ints  */
 } tree_mesh_t;
 
