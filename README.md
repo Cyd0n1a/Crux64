@@ -4,12 +4,14 @@
 
 "The crux cordis or crux of the heart (from Latin "crux" meaning "cross") is the area on the lower back side of the heart where the coronary sulcus (the groove separating the atria from the ventricles) and the posterior interventricular sulcus (the groove separating the left from the right ventricle) meet..."
 
+## About
+
 A physics-based, procedurally generated 3D mountain climbing simulation for
 the Nintendo 64. Control the individual limbs of a stick-figure climber to
 scale a treacherous fixed-seed peak — every movement takes calculation,
 balance, and stamina.
 
-(c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries.
+(c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries. (cydonis.co.uk/about)
 
 See [Crux64_GDD.md](Crux64_GDD.md) for the full design document.
 
