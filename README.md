@@ -1,5 +1,9 @@
 # Crux64 ⛰️
 
+"The most difficult portion of a climb; often the grade is defined by the difficulty of the crux..."
+
+"The crux cordis or crux of the heart (from Latin "crux" meaning "cross") is the area on the lower back side of the heart where the coronary sulcus (the groove separating the atria from the ventricles) and the posterior interventricular sulcus (the groove separating the left from the right ventricle) meet..."
+
 A physics-based, procedurally generated 3D mountain climbing simulation for
 the Nintendo 64. Control the individual limbs of a stick-figure climber to
 scale a treacherous fixed-seed peak — every movement takes calculation,
