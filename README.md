@@ -1,5 +1,7 @@
 # Crux64 ⛰️
 
+![logo](splash-screen-3.png) <br>
+
 "The most difficult portion of a climb; often the grade is defined by the difficulty of the crux..."
 
 "The crux cordis or crux of the heart (from Latin "crux" meaning "cross") is the area on the lower back side of the heart where the coronary sulcus (the groove separating the atria from the ventricles) and the posterior interventricular sulcus (the groove separating the left from the right ventricle) meet..."
