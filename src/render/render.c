@@ -8,6 +8,7 @@
 #include "scatter_render.h"
 #include "wall_render.h"
 #include "title_render.h"
+#include "splash.h"
 #include "sky_render.h"
 #include "../meta/dialogue.h"
 #include "../gen/mountain.h"
@@ -337,6 +338,8 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
 
     if (hud->title) {
         draw_title_hud(hud);
+        /* Boot splash fading out over the title scene (no-op once done). */
+        splash_draw_overlay();
     } else if (hud->cinematic) {
         /* Prologue: the base-camp scene plays behind the dialogue box; the
          * dev HUD stays hidden so the frame reads cinematic. */

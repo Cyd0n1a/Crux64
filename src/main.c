@@ -56,6 +56,7 @@
 #include "meta/dialogue.h"
 #include "meta/prologue.h"
 #include "render/render.h"
+#include "render/splash.h"
 
 int main(void) {
     /* GDD 1.3: Expansion Pak is a hard requirement (heightmap arrays,
@@ -72,10 +73,10 @@ int main(void) {
     rumble_init();
     synth_init();
     save_init();
-    /* Mount the ROM filesystem and cue the title loop. If the FS can't be
-     * found, music stays silent and the synth's drone bed covers ambience. */
+    /* Mount the ROM filesystem. If the FS can't be found, music stays silent
+     * and the synth's drone bed covers ambience. The boot splash cues its own
+     * track (MUSIC_SPLASH); the title loop starts as the splash hands over. */
     music_init();
-    music_play(MUSIC_TITLE);
     t3d_init((T3DInitParams){});
 
     long long gen_start = timer_ticks();
@@ -86,6 +87,12 @@ int main(void) {
     float gen_ms = (float)TIMER_MICROS_LL(timer_ticks() - gen_start) / 1000.f;
 
     render_init();
+
+    /* Boot splash: libdragon logo -> Cydonis logo -> game key art -> title.
+     * Kick the roar+jingle track now (after gen, so it starts in sync with the
+     * first splash frame rather than during the generation freeze). */
+    splash_init();
+    music_play(MUSIC_SPLASH);
 
     /* Follow camera: orbits the climber on the D-pad, seeded looking
      * at their back. GDD 3.1: zooms in as strain rises on delicate
@@ -104,6 +111,12 @@ int main(void) {
     bool  in_title  = true;
     float title_ang = 0.f;
 
+    /* Boot splash owns the frame until it hands over to the title. title_cued
+     * latches the one-time swap from the splash track to the title loop. */
+    bool  in_splash   = true;
+    bool  title_cued  = false;
+    bool  splash_done = false;   /* one-time free of the boot-splash assets */
+
     /* Prologue (Scene 01, "The Morning After"): a base-camp cutscene that
      * plays once on New Game — the camera holds the player's dawn view of
      * Mt. Xerxes while Maya's headset call types out in the dialogue box.
@@ -121,6 +134,43 @@ int main(void) {
 
         input_poll();
         const input_state_t *in = input_state();
+
+        /* Advance the boot splash every frame (no-op once finished) and swap
+         * the splash track for the title loop the moment the key art comes up,
+         * so music is already playing under the title screen. */
+        splash_update(dt);
+        if (splash_title_music_due() && !title_cued) {
+            music_play(MUSIC_TITLE);
+            title_cued = true;
+        }
+        if (splash_finished() && !splash_done) {
+            splash_free();       /* boot-only sprites reclaimed for the run */
+            splash_done = true;
+        }
+
+        if (in_splash) {
+            bool skip_now = in->start_btn || in->a_btn || in->b_btn;
+            if (skip_now) splash_skip();
+
+            if (splash_fullscreen()) {
+                /* Calm bed under the splash; the drone auto-silences while a
+                 * track streams, leaving just faint wind. */
+                synth_set_altitude(0.30f);
+                synth_set_stress(0.f);
+                synth_set_falling(false);
+                synth_poll();
+                rumble_update(dt);
+                splash_render(display_get());
+                continue;
+            }
+
+            /* Fullscreen phase over: hand control to the title. A skip press
+             * is consumed here so it doesn't also trip the title's Start; a
+             * natural finish falls through so the title frame renders with the
+             * splash's fade-out overlay on top. */
+            in_splash = false;
+            if (skip_now) continue;
+        }
 
         if (in_title) {
             title_ang += dt * 0.10f;

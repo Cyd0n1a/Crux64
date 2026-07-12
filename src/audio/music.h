@@ -19,6 +19,7 @@ typedef enum {
     MUSIC_NONE = 0,
     MUSIC_TITLE,      /* title-screen.mp3 */
     MUSIC_GAME,       /* main-game-loop1.mp3 */
+    MUSIC_SPLASH,     /* splash.mp3 (boot roar+jingle; played once, not looped) */
     MUSIC_TRACK_COUNT
 } music_track_t;
 

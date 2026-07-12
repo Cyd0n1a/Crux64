@@ -16,13 +16,15 @@
 #define FRAME_MIN  2048    /* refill below this so a whole frame is always present */
 
 static const char *const track_path[MUSIC_TRACK_COUNT] = {
-    [MUSIC_NONE]  = NULL,
-    [MUSIC_TITLE] = "/title-screen.mp3",
-    [MUSIC_GAME]  = "/main-game-loop1.mp3",
+    [MUSIC_NONE]   = NULL,
+    [MUSIC_TITLE]  = "/title-screen.mp3",
+    [MUSIC_GAME]   = "/main-game-loop1.mp3",
+    [MUSIC_SPLASH] = "/splash.mp3",
 };
 
 static bool      avail;             /* DFS mounted: a track can be played */
 static bool      playing;
+static bool      looping = true;    /* false for one-shot tracks (boot splash) */
 static int       fh = -1;           /* current DragonFS handle, -1 = none */
 static mp3dec_t  dec;
 
@@ -73,7 +75,7 @@ static bool fill_frame(void) {
         int have = in_size - in_pos;
         if (have < FRAME_MIN) { refill(); have = in_size - in_pos; }
         if (have <= 0) {                 /* nothing left: wrap to the top */
-            if (!loop_restart()) return false;
+            if (!looping || !loop_restart()) return false;
             continue;
         }
 
@@ -83,7 +85,7 @@ static bool fill_frame(void) {
         in_pos += info.frame_bytes;
 
         if (info.frame_bytes == 0) {     /* no complete frame in a full window: EOF */
-            if (!loop_restart()) return false;
+            if (!looping || !loop_restart()) return false;
             continue;
         }
         if (samples > 0) {               /* real audio frame */
@@ -126,6 +128,7 @@ bool music_init(void) {
 void music_play(music_track_t t) {
     if (!avail || t <= MUSIC_NONE || t >= MUSIC_TRACK_COUNT) { music_stop(); return; }
     if (!open_track(track_path[t])) { playing = false; return; }
+    looping = (t != MUSIC_SPLASH);   /* the boot splash plays through once */
     playing = true;
 }
 
