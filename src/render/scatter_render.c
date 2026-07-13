@@ -62,8 +62,11 @@ static int        inst_count;
  * camera near plane. Computed inline (no per-instance array) so the boot
  * allocation footprint stays identical to the pre-cull build. */
 static inline float inst_near_radius(const scatter_t *s) {
-    return s->kind == SCAT_TREE ? s->scale * 0.5f + 2.5f
-                                : s->scale + 1.6f;
+    /* 1.2f is CAM_NEAR. Expand the multiplier to fully encapsulate the tree 
+     * branches (far-cull radius uses 0.7f for trees, 1.3f for rocks) plus the 
+     * near plane to ensure NO vertices cross Z=1.2. */
+    return s->kind == SCAT_TREE ? s->scale * 0.8f + 1.2f
+                                : s->scale * 1.4f + 1.2f;
 }
 
 /* ------------------------------------------------------------------ */

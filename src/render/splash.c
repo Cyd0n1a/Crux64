@@ -123,12 +123,12 @@ static void draw_cyd(float alpha, float amp, float wt) {
     rdpq_tex_blit(dst, x0, y0, NULL);
 }
 
-/* Key art, full-bleed, with a gentle continuous zoom-out over its lifetime
- * (scale > 1 crops the edges off-screen -- no gaps). */
+/* Key art, scaled into the Title Safe area (0.90) to prevent CRT overscan
+ * cropping, with a gentle continuous zoom-out over its lifetime. */
 static float key_scale(void) {
     float u = (t - T_CYD_HOLD) / (T_END - T_CYD_HOLD);
     if (u < 0.f) u = 0.f; else if (u > 1.f) u = 1.f;
-    return 1.06f - 0.07f * u;
+    return 0.96f - 0.06f * u;
 }
 
 static void draw_key(float alpha, float scale) {
