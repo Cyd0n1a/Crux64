@@ -8,7 +8,7 @@
 
 /* The sun direction the light rig points from (render.c normalises its own
  * copy for lighting; we re-normalise here for the on-screen sprite). */
-const T3DVec3 SKY_SUN_DIR = {{ 0.48f, 0.62f, 0.34f }};
+T3DVec3 SKY_SUN_DIR = {{ 0.48f, 0.62f, 0.34f }};
 
 #define SKY_PI       3.14159265f
 
@@ -28,9 +28,15 @@ const T3DVec3 SKY_SUN_DIR = {{ 0.48f, 0.62f, 0.34f }};
 
 /* --- sun / flare ------------------------------------------------------ */
 #define GLOW_TEX     32          /* IA16 radial falloff, reused per blob */
+#define STARS_TEX    64
+#define MOON_TEX     32
 
 static surface_t cloud_surf;
 static surface_t glow_surf;
+static surface_t stars_surf;
+static surface_t moon_surf;
+
+static float g_time_of_day = 12.0f;
 
 static T3DVertPacked   *dome_verts;
 static rspq_block_t    *dome_blk;
@@ -106,6 +112,43 @@ static void bake_glow(void) {
                                         glow_surf.stride * GLOW_TEX);
 }
 
+static void bake_stars(void) {
+    stars_surf = surface_alloc(FMT_RGBA16, STARS_TEX, STARS_TEX);
+    for (int y = 0; y < STARS_TEX; y++) {
+        uint16_t *row = (uint16_t *)((uint8_t *)stars_surf.buffer + y * stars_surf.stride);
+        for (int x = 0; x < STARS_TEX; x++) {
+            float n = noise_simplex2(x * 12.0f, y * 12.0f);
+            if (n > 0.85f) {
+                float intensity = (n - 0.85f) / 0.15f;
+                uint8_t c = (uint8_t)(intensity * 255.0f);
+                row[x] = (uint16_t)(((c >> 3) << 11) | ((c >> 3) << 6) | ((c >> 3) << 1) | (c ? 1 : 0));
+            } else {
+                row[x] = 0;
+            }
+        }
+    }
+    data_cache_hit_writeback_invalidate(stars_surf.buffer, stars_surf.stride * STARS_TEX);
+}
+
+static void bake_moon(void) {
+    moon_surf = surface_alloc(FMT_RGBA16, MOON_TEX, MOON_TEX);
+    for (int y = 0; y < MOON_TEX; y++) {
+        uint16_t *row = (uint16_t *)((uint8_t *)moon_surf.buffer + y * moon_surf.stride);
+        for (int x = 0; x < MOON_TEX; x++) {
+            float dx = (x - 15.5f) / 16.0f;
+            float dy = (y - 15.5f) / 16.0f;
+            if (dx*dx + dy*dy <= 1.0f) {
+                float n = noise_simplex2(x * 0.2f, y * 0.2f);
+                uint8_t c = (uint8_t)(200.0f + 55.0f * n);
+                row[x] = (uint16_t)(((c >> 3) << 11) | ((c >> 3) << 6) | ((c >> 3) << 1) | 1);
+            } else {
+                row[x] = 0;
+            }
+        }
+    }
+    data_cache_hit_writeback_invalidate(moon_surf.buffer, moon_surf.stride * MOON_TEX);
+}
+
 static void pack_dome_vert(int vi, float px, float py, float pz,
                            int16_t s, int16_t t, uint16_t norm) {
     T3DVertPacked *p = &dome_verts[vi / 2];
@@ -166,11 +209,21 @@ static void build_dome(void) {
 void sky_render_init(void) {
     bake_clouds();
     bake_glow();
+    bake_stars();
+    bake_moon();
     build_dome();
     for (int i = 0; i < MAT_BUFS; i++) {
         dome_mat[i] = malloc_uncached(sizeof(T3DMat4FP));
         dome_sync_valid[i] = false;
     }
+}
+
+void sky_update_time(float time_of_day) {
+    g_time_of_day = time_of_day;
+    float angle = (time_of_day / 24.0f) * 2.0f * SKY_PI - (SKY_PI / 2.0f);
+    SKY_SUN_DIR.v[0] = 0.48f;
+    SKY_SUN_DIR.v[1] = sinf(angle);
+    SKY_SUN_DIR.v[2] = cosf(angle);
 }
 
 void sky_dome_draw(T3DViewport *vp, const T3DVec3 *eye) {
@@ -189,6 +242,27 @@ void sky_dome_draw(T3DViewport *vp, const T3DVec3 *eye) {
 
     float time = (float)((double)get_ticks_us() * 1e-6);
     float scroll = fmodf(time * CLOUD_SCROLL, (float)CLOUD_TEX);
+
+    float night_blend = 1.0f;
+    if (g_time_of_day > 5.0f && g_time_of_day < 19.0f) night_blend = 0.0f;
+    else if (g_time_of_day >= 5.0f && g_time_of_day < 7.0f) night_blend = 1.0f - ((g_time_of_day - 5.0f) / 2.0f);
+    else if (g_time_of_day >= 17.0f && g_time_of_day < 19.0f) night_blend = (g_time_of_day - 17.0f) / 2.0f;
+
+    if (night_blend > 0.01f) {
+        rdpq_mode_combiner(RDPQ_COMBINER1((0, 0, 0, PRIM), (TEX0, 0, PRIM, 0)));
+        rdpq_mode_blender(RDPQ_BLENDER_ADDITIVE);
+        rdpq_mode_zbuf(false, false);
+        rdpq_set_prim_color(RGBA32(255, 255, 255, (uint8_t)(night_blend * 255.f)));
+        rdpq_tex_upload(TILE0, &stars_surf, &(rdpq_texparms_t){
+            .s.repeats = REPEAT_INFINITE, .t.repeats = REPEAT_INFINITE,
+            .s.translate = time * 0.2f, .t.translate = time * 0.2f,
+        });
+        
+        t3d_state_set_drawflags(T3D_FLAG_TEXTURED);
+        t3d_matrix_push(dome_mat[dome_buf]);
+        rspq_block_run(dome_blk);
+        t3d_matrix_pop(1);
+    }
 
     rdpq_mode_combiner(RDPQ_COMBINER1((0, 0, 0, PRIM), (TEX0, 0, PRIM, 0)));
     rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);   /* alpha-over the sky clear */
@@ -246,7 +320,23 @@ void sky_sun_draw(T3DViewport *vp, const T3DVec3 *eye) {
     t3d_mat4_mul_vec3(&clip, &vp->matCamProj, &world);
 
     float sx = screen.v[0], sy = screen.v[1];
-    g_sun_sx = sx; g_sun_sy = sy; g_sun_have = true;
+
+    T3DVec3 moon_dir = {{ -dir.v[0], -dir.v[1], -dir.v[2] }};
+    T3DVec3 world_m = {{ eye->v[0] + moon_dir.v[0] * 1e5f,
+                         eye->v[1] + moon_dir.v[1] * 1e5f,
+                         eye->v[2] + moon_dir.v[2] * 1e5f }};
+    T3DVec3 screen_m;
+    t3d_viewport_calc_viewspace_pos(vp, &screen_m, &world_m);
+    T3DVec4 clip_m;
+    t3d_mat4_mul_vec3(&clip_m, &vp->matCamProj, &world_m);
+    float sx_m = screen_m.v[0], sy_m = screen_m.v[1];
+
+    if (dir.v[1] > moon_dir.v[1]) {
+        g_sun_sx = sx; g_sun_sy = sy;
+    } else {
+        g_sun_sx = sx_m; g_sun_sy = sy_m;
+    }
+    g_sun_have = true;
 
     bool infront  = clip.v[3] > 0.f;
     bool onscreen = infront && sx > -48.f && sx < 368.f
@@ -265,19 +355,38 @@ void sky_sun_draw(T3DViewport *vp, const T3DVec3 *eye) {
     rdpq_tex_upload(TILE0, &glow_surf, NULL);
 
     /* Sun: a soft halo under a hot core. */
-    blit_glow(sx, sy, 62.f, 255, 236, 190, 0.28f * fa);
-    blit_glow(sx, sy, 26.f, 255, 246, 216, 0.92f * fa);
+    if (dir.v[1] > -0.2f && onscreen) {
+        blit_glow(sx, sy, 62.f, 255, 236, 190, 0.28f * fa);
+        blit_glow(sx, sy, 26.f, 255, 246, 216, 0.92f * fa);
 
-    /* Ghosts strung along the sun -> screen-centre axis (and past it). */
-    float dx = 160.f - sx, dy = 120.f - sy;
-    static const struct { float k, rad; uint8_t r, g, b; float a; } ghost[] = {
-        { 0.30f, 10.f, 180, 210, 255, 0.24f },
-        { 0.55f, 20.f, 255, 220, 180, 0.22f },
-        { 0.78f,  7.f, 200, 255, 220, 0.28f },
-        { 1.00f, 26.f, 255, 210, 170, 0.18f },
-        { 1.30f, 13.f, 180, 190, 255, 0.20f },
-    };
-    for (int i = 0; i < (int)(sizeof ghost / sizeof ghost[0]); i++)
-        blit_glow(sx + dx * ghost[i].k, sy + dy * ghost[i].k, ghost[i].rad,
-                  ghost[i].r, ghost[i].g, ghost[i].b, ghost[i].a * fa);
+        /* Ghosts strung along the sun -> screen-centre axis (and past it). */
+        float dx = 160.f - sx, dy = 120.f - sy;
+        static const struct { float k, rad; uint8_t r, g, b; float a; } ghost[] = {
+            { 0.30f, 10.f, 180, 210, 255, 0.24f },
+            { 0.55f, 20.f, 255, 220, 180, 0.22f },
+            { 0.78f,  7.f, 200, 255, 220, 0.28f },
+            { 1.00f, 26.f, 255, 210, 170, 0.18f },
+            { 1.30f, 13.f, 180, 190, 255, 0.20f },
+        };
+        for (int i = 0; i < (int)(sizeof ghost / sizeof ghost[0]); i++)
+            blit_glow(sx + dx * ghost[i].k, sy + dy * ghost[i].k, ghost[i].rad,
+                      ghost[i].r, ghost[i].g, ghost[i].b, ghost[i].a * fa);
+    }
+
+    /* Moon: textured orb */
+    bool infront_m  = clip_m.v[3] > 0.f;
+    bool onscreen_m = infront_m && sx_m > -48.f && sx_m < 368.f
+                                && sy_m > -48.f && sy_m < 288.f;
+    if (moon_dir.v[1] > -0.2f && onscreen_m && g_sun_vis_z) {
+        rdpq_set_mode_standard();
+        rdpq_mode_combiner(RDPQ_COMBINER1((0, 0, 0, PRIM), (TEX0, 0, PRIM, 0)));
+        rdpq_mode_blender(RDPQ_BLENDER_ADDITIVE);
+        rdpq_mode_filter(FILTER_BILINEAR);
+        rdpq_mode_zbuf(false, false);
+        rdpq_set_prim_color(RGBA32(255, 255, 255, 220));
+        rdpq_tex_upload(TILE0, &moon_surf, NULL);
+        rdpq_texture_rectangle_scaled(TILE0,
+            (int)(sx_m - 24.f), (int)(sy_m - 24.f), (int)(sx_m + 24.f), (int)(sy_m + 24.f),
+            0, 0, MOON_TEX, MOON_TEX);
+    }
 }

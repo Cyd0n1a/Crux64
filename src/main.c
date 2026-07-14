@@ -57,6 +57,8 @@
 #include "meta/prologue.h"
 #include "render/render.h"
 #include "render/splash.h"
+#include "render/sky_render.h"
+#include "sim/weather.h"
 
 int main(void) {
     /* GDD 1.3: Expansion Pak is a hard requirement (heightmap arrays,
@@ -84,6 +86,7 @@ int main(void) {
     grips_generate();
     climber_init();     /* also pitches base camp, which scatter avoids */
     scatter_generate(); /* trees, rocks and boulders across the lower flanks */
+    weather_init();
     float gen_ms = (float)TIMER_MICROS_LL(timer_ticks() - gen_start) / 1000.f;
 
     render_init();
@@ -134,6 +137,9 @@ int main(void) {
 
         input_poll();
         const input_state_t *in = input_state();
+
+        weather_update(dt);
+        sky_update_time(weather_current()->time_of_day);
 
         /* Advance the boot splash every frame (no-op once finished) and swap
          * the splash track for the title loop the moment the key art comes up,
@@ -359,6 +365,8 @@ int main(void) {
         synth_set_altitude(alt01);
         synth_set_stress(stress);
         synth_set_falling(cs->mode == CLIMBER_FALLING);
+        synth_set_weather_wind(weather_current()->wind_strength);
+        synth_set_weather_rain(weather_current()->rain_intensity);
         synth_poll();
 
         char status[64];

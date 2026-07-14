@@ -22,6 +22,8 @@ void synth_poll(void);      /* fill pending audio buffers; call once/frame */
 void synth_set_altitude(float alt01);   /* 0..1: higher = fiercer wind gusts */
 void synth_set_stress(float stress01);  /* 0..1: heartbeat rate + volume */
 void synth_set_falling(bool falling);   /* wind rushes up during a fall */
+void synth_set_weather_wind(float w);   /* 0..1: environmental wind from weather */
+void synth_set_weather_rain(float r);   /* 0..1: environmental rain noise */
 
 /* One-shot SFX, keyed off climbing events. */
 void synth_grunt(float effort);   /* exertion voice; effort 0..1 bends pitch/rasp */

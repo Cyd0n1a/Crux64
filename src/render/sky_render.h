@@ -15,9 +15,10 @@
 
 /* The world-space sun direction, shared by the light rig (render.c) and the
  * visible sun sprite so the flare sits where the light comes from. */
-extern const T3DVec3 SKY_SUN_DIR;
+extern T3DVec3 SKY_SUN_DIR;
 
 void sky_render_init(void);
+void sky_update_time(float time_of_day);
 
 /* Backdrop cloud dome. Call right after the screen clears and before the
  * terrain: it disables depth for its own draw and restores the frame's

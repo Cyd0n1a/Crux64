@@ -23,6 +23,7 @@ OBJS = \
     $(BUILD_DIR)/src/gen/tree_gen.o \
     $(BUILD_DIR)/src/sim/climber.o \
     $(BUILD_DIR)/src/sim/campsite.o \
+    $(BUILD_DIR)/src/sim/weather.o \
     $(BUILD_DIR)/src/meta/save.o \
     $(BUILD_DIR)/src/meta/dialogue.o \
     $(BUILD_DIR)/src/meta/prologue.o \
@@ -32,6 +33,7 @@ OBJS = \
     $(BUILD_DIR)/src/render/scatter_render.o \
     $(BUILD_DIR)/src/render/wall_render.o \
     $(BUILD_DIR)/src/render/title_render.o \
+    $(BUILD_DIR)/src/render/weather_render.o \
     $(BUILD_DIR)/src/render/sky_render.o \
     $(BUILD_DIR)/src/render/splash.o
 

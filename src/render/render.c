@@ -13,11 +13,27 @@
 #include "../meta/dialogue.h"
 #include "../gen/mountain.h"
 #include "../sim/campsite.h"
+#include "../sim/weather.h"
+#include "weather_render.h"
 #include "../version.h"
 
 /* Pre-dawn alpine sky; fog fades terrain into the same tint so the
  * horizon is seamless (GDD 3.1: fog hides chunk pop-in + altitude). */
-#define SKY_COLOR   RGBA32(114, 128, 156, 0xFF)
+#define SKY_COLOR_DAY   RGBA32(114, 128, 156, 0xFF)
+#define SKY_COLOR_NIGHT RGBA32(10, 12, 20, 0xFF)
+
+static color_t get_sky_color(float t) {
+    if (t < 5.0f || t > 19.0f) return SKY_COLOR_NIGHT;
+    if (t >= 5.0f && t < 7.0f) {
+        float lerp = (t - 5.0f) / 2.0f;
+        return RGBA32(10 + lerp*(114-10), 12 + lerp*(128-12), 20 + lerp*(156-20), 0xFF);
+    }
+    if (t >= 17.0f && t < 19.0f) {
+        float lerp = (t - 17.0f) / 2.0f;
+        return RGBA32(114 + lerp*(10-114), 128 + lerp*(12-128), 156 + lerp*(20-156), 0xFF);
+    }
+    return SKY_COLOR_DAY;
+}
 #define FOG_NEAR    160.f
 #define FOG_FAR     430.f
 /* Near plane hugs the climber close-up; far stays past the fog wall.
@@ -139,6 +155,7 @@ void render_init(void) {
     wall_render_init();
     title_render_init();
     sky_render_init();
+    weather_render_init();
 
     /* Load the builtin mono once (it's a shared static buffer — a second
      * load asserts) and share it with the dialogue box, which only adds
@@ -227,6 +244,15 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     float fog_near = hud->title ? TITLE_FOG_NEAR : FOG_NEAR;
     float fog_far  = hud->title ? TITLE_FOG_FAR  : FOG_FAR;
 
+    const weather_state_t* w = weather_current();
+    color_t current_sky_color = get_sky_color(w->time_of_day);
+
+    if (w->fog_density > 0.0f) {
+        float fog_shrink = 1.0f - (w->fog_density * 0.8f);
+        fog_near *= fog_shrink;
+        fog_far *= fog_shrink;
+    }
+
     /* Occlusion probe for the sun/flare reads the previous frame's depth,
      * so sample it before this frame clears the buffer. */
     sky_sun_presample(&zbuf);
@@ -248,7 +274,7 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     t3d_frame_start();
     t3d_viewport_attach(&viewport);
 
-    t3d_screen_clear_color(SKY_COLOR);
+    t3d_screen_clear_color(current_sky_color);
     t3d_screen_clear_depth();
 
     /* Cloud dome first, as a depth-less backdrop the terrain paints over. */
@@ -257,15 +283,28 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     /* Terrain render state (the dome left its own combiner/blender behind). */
     rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
     rdpq_mode_fog(RDPQ_FOG_STANDARD);
-    rdpq_set_fog_color(SKY_COLOR);
+    rdpq_set_fog_color(current_sky_color);
     t3d_fog_set_range(fog_near, fog_far);
     t3d_fog_set_enabled(true);
 
     /* Low warm sun + cool skylight ambient (GDD 3.1). */
-    t3d_light_set_ambient((uint8_t[]){ 72, 78, 100, 0xFF });
+    float day_blend = 1.0f;
+    if (w->time_of_day < 5.0f || w->time_of_day > 19.0f) day_blend = 0.0f;
+    else if (w->time_of_day >= 5.0f && w->time_of_day < 7.0f) day_blend = (w->time_of_day - 5.0f) / 2.0f;
+    else if (w->time_of_day >= 17.0f && w->time_of_day < 19.0f) day_blend = 1.0f - ((w->time_of_day - 17.0f) / 2.0f);
+
+    uint8_t amb_r = 20 + day_blend * (72 - 20);
+    uint8_t amb_g = 25 + day_blend * (78 - 25);
+    uint8_t amb_b = 40 + day_blend * (100 - 40);
+    t3d_light_set_ambient((uint8_t[]){ amb_r, amb_g, amb_b, 0xFF });
+
     T3DVec3 sun_dir = SKY_SUN_DIR;
     t3d_vec3_norm(&sun_dir);
-    t3d_light_set_directional(0, (uint8_t[]){ 255, 235, 200, 0xFF }, &sun_dir);
+    
+    uint8_t sun_r = 10 + day_blend * (255 - 10);
+    uint8_t sun_g = 15 + day_blend * (235 - 15);
+    uint8_t sun_b = 25 + day_blend * (200 - 25);
+    t3d_light_set_directional(0, (uint8_t[]){ sun_r, sun_g, sun_b, 0xFF }, &sun_dir);
 
     /* The campfire casts flickering warm light onto the terrain, tent
      * and climber (point light positions are world-space in tiny3d). */
@@ -327,6 +366,8 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
     if (!hud->title && !hud->cinematic)
         scatter_render_draw(eye, target);
     campsite_render_draw();
+
+    weather_render_draw(eye, target);
 
     /* 3D title logo still needs the world render state. */
     if (hud->title)

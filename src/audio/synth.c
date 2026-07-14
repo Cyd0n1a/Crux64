@@ -200,10 +200,14 @@ void synth_chalk(void) {
 static float alt_tgt,  alt_cur;
 static float str_tgt,  str_cur;
 static float fall_tgt, fall_cur;
+static float weather_wind_tgt, weather_wind_cur;
+static float weather_rain_tgt, weather_rain_cur;
 
 void synth_set_altitude(float a) { alt_tgt  = clampf(a, 0.f, 1.f); }
 void synth_set_stress(float s)   { str_tgt  = clampf(s, 0.f, 1.f); }
 void synth_set_falling(bool f)   { fall_tgt = f ? 1.f : 0.f; }
+void synth_set_weather_wind(float w) { weather_wind_tgt = clampf(w, 0.f, 1.f); }
+void synth_set_weather_rain(float r) { weather_rain_tgt = clampf(r, 0.f, 1.f); }
 
 /* Wind: white noise through a lowpass whose cutoff a slow LFO sweeps,
  * minus a slower lowpass to thin it toward a howl. */
@@ -230,6 +234,8 @@ static void render(short *buf, int nframes) {
         alt_cur  += (alt_tgt  - alt_cur)  * 0.0008f;
         str_cur  += (str_tgt  - str_cur)  * 0.0008f;
         fall_cur += (fall_tgt - fall_cur) * 0.0020f;
+        weather_wind_cur += (weather_wind_tgt - weather_wind_cur) * 0.0008f;
+        weather_rain_cur += (weather_rain_tgt - weather_rain_cur) * 0.0008f;
 
         float sample = 0.f;
 
@@ -241,8 +247,13 @@ static void render(short *buf, int nframes) {
         wind_lp2 += 0.004f * (wind_lp - wind_lp2);
         float howl = wind_lp - wind_lp2;                 /* crude band-pass */
         float gust = 0.55f + 0.45f * (lut_sin(wind_gust_ph) * 0.5f + 0.5f);
-        float wind_amp = (0.10f + 0.32f * alt_cur) * gust + 0.55f * fall_cur;
+        float wind_amp = (0.10f + 0.32f * alt_cur + 0.40f * weather_wind_cur) * gust + 0.55f * fall_cur;
         sample += howl * wind_amp;
+
+        /* --- rain --- */
+        static float rain_lp;
+        rain_lp += 0.2f * (white() - rain_lp);
+        sample += rain_lp * 0.25f * weather_rain_cur;
 
         /* --- ambient drone bed --- */
         pad_trem_ph += 0.05f / SAMPLE_RATE;  if (pad_trem_ph >= 1.f) pad_trem_ph -= 1.f;
