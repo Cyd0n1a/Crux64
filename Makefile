@@ -13,6 +13,8 @@ OBJS = \
     $(BUILD_DIR)/src/input/input.o \
     $(BUILD_DIR)/src/input/rumble.o \
     $(BUILD_DIR)/src/audio/synth.o \
+    $(BUILD_DIR)/src/audio/rsp_synth.o \
+    $(BUILD_DIR)/src/audio/rsp_synth_host.o \
     $(BUILD_DIR)/src/audio/music.o \
     $(BUILD_DIR)/src/audio/minimp3.o \
     $(BUILD_DIR)/src/gen/noise.o \

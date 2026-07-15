@@ -23,15 +23,24 @@ static inline float lut_sin(float phase) {
     return sine_lut[idx & LUT_MASK];
 }
 
-/* --- noise + rng ------------------------------------------------------ */
-static uint32_t noise_lfsr = 0xC0DEu;
-static uint32_t rng_state  = 0x63727578u;   /* the fixed seed, for parity */
+/* --- noise + rng (RSP Offloaded) -------------------------------------- */
+#include "rsp_synth.h"
+#define NOISE_BATCH_SIZE 1024
+static float rsp_noise_buffer[NOISE_BATCH_SIZE] __attribute__((aligned(16)));
+static int rsp_noise_idx = NOISE_BATCH_SIZE;
 
 static inline float white(void) {
-    /* 16-bit Galois LFSR, mapped to -1..1. */
-    noise_lfsr = (noise_lfsr >> 1) ^ (-(noise_lfsr & 1u) & 0xB400u);
-    return (float)(int)(noise_lfsr & 0xFFFF) * (1.f / 32768.f) - 1.f;
+    if (rsp_noise_idx >= NOISE_BATCH_SIZE) {
+        rsp_synth_white_noise(rsp_noise_buffer, NOISE_BATCH_SIZE);
+        rspq_wait();
+        rsp_noise_idx = 0;
+    }
+    /* RSP returns IEEE 754 floats in [1.0, 2.0). Map to [-1.0, 1.0). */
+    return (rsp_noise_buffer[rsp_noise_idx++] * 2.0f) - 3.0f;
 }
+
+static uint32_t rng_state  = 0x63727578u;   /* the fixed seed, for parity */
+
 static uint32_t rng(void) {
     rng_state ^= rng_state << 13;
     rng_state ^= rng_state >> 17;
@@ -335,6 +344,7 @@ void synth_init(void) {
     memset(voices, 0, sizeof voices);
     hb_clock = 0.9f;
     audio_init(SAMPLE_RATE, 4);
+    rsp_synth_init();
 }
 
 void synth_poll(void) {

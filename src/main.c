@@ -71,6 +71,12 @@ int main(void) {
     joypad_init();
     timer_init();
 
+    debug_init_usblog();
+    debug_init_emulog();
+    if (debug_init_sdfs("sd:/", -1)) {
+        debug_init_sdlog("sd:/crux64_crash.log", "a");
+    }
+
     input_init();
     rumble_init();
     synth_init();
