@@ -13,6 +13,9 @@ the Nintendo 64. Control the individual limbs of a stick-figure climber to
 scale a treacherous fixed-seed peak — every movement takes calculation,
 balance, and stamina.
 
+> [!IMPORTANT]
+> Crux64 is early in development, don't expect a flawless experience. It will most likely crash, due to my hubris.
+
 (c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries. (cydonis.co.uk/about)
 
 See [Crux64_GDD.md](Crux64_GDD.md) for the full design document.
