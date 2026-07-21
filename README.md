@@ -1,5 +1,5 @@
 # Crux64 ⛰️
-
+![https://shields.io/](https://img.shields.io/badge/Platform-Nintendo64) ![https://shields.io](https://img.shields.io/badge/Nintendo_64-Nintendo64) [![Open Source? Yes!](https://badgen.net/badge/Open%20Source%20%3F/Yes%21/blue?icon=github)](https://github.com/Naereen/badges/) ![Build_Status](https://img.shields.io/badge/build-passing-brightgreen?style=for-the-badge) <br> <br>
 ![logo](splash-screen-3.png) <br>
 
 "The most difficult portion of a climb; often the grade is defined by the difficulty of the crux..."
