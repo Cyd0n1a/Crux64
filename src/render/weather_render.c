@@ -15,6 +15,9 @@ typedef struct {
 } particle_t;
 
 static particle_t particles[MAX_PARTICLES];
+/* malloc_uncached: the pack loop writes straight to RDRAM, so no cache
+ * flush here. A CACHE op on an uncached address is undefined on the VR4300
+ * and can clobber an unrelated dirty line. */
 static T3DVertPacked *part_verts;
 static T3DMat4FP *part_mat;
 
@@ -105,7 +108,6 @@ void weather_render_draw(const T3DVec3 *eye, const T3DVec3 *target) {
         }
     }
     
-    data_cache_hit_writeback(part_verts, sizeof(T3DVertPacked) * (MAX_PARTICLES * 3 / 2 + 1));
 
     rdpq_set_mode_standard();
     rdpq_mode_blender(RDPQ_BLENDER_ADDITIVE);

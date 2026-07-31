@@ -19,6 +19,23 @@ Physics-based procedural mountain climbing sim for N64. Design doc:
   paths mirror source paths (`src/foo.c` → `build/src/foo.o`); the Makefile
   must keep `-include $(OBJS:.o=.d)` or header edits don't rebuild.
 
+## Cache maintenance
+
+- NEVER call `data_cache_hit_*` on an uncached pointer. `malloc_uncached()`
+  and `surface_alloc()` (which uses `malloc_uncached_aligned`) return
+  KSEG1 (`0xA0......`) addresses; writes through them go straight to RDRAM,
+  so no flush is needed. A `CACHE` instruction on a KSEG1 address is
+  *undefined* on the VR4300 — the hardware still derives an index from the
+  address bits and acts on whatever line maps there, so it can write back
+  or invalidate an unrelated dirty line and silently lose a write anywhere
+  in RAM. This produced wandering rspq/RDP corruption that survived every
+  feature-level bisect.
+- Cache ops are only correct on genuinely cached memory the RSP/RDP DMAs
+  into — e.g. `synth.c`'s static `rsp_noise_buffer`, which *must* be
+  invalidated after the RSP writes it.
+- ares reports these as `[unusual] [CPU] CACHE access to non-cacheable
+  address ... at PC ...`; gopher64 does not. Soak under both.
+
 ## Tiny3D gotchas (hard-won, from sibling projects)
 
 - Frame pattern: `rdpq_attach` → `t3d_frame_start` → `t3d_viewport_attach` →

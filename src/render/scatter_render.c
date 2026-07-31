@@ -58,16 +58,7 @@ static T3DVec3   *inst_center;
 static float     *inst_radius;   /* far-cull bounding radius   */
 static int        inst_count;
 
-/* Near-skip radius: once the eye is this close, the mesh straddles the
- * camera near plane. Computed inline (no per-instance array) so the boot
- * allocation footprint stays identical to the pre-cull build. */
-static inline float inst_near_radius(const scatter_t *s) {
-    /* 1.2f is CAM_NEAR. Expand the multiplier to fully encapsulate the tree 
-     * branches (far-cull radius uses 0.7f for trees, 1.3f for rocks) plus the 
-     * near plane to ensure NO vertices cross Z=1.2. */
-    return s->kind == SCAT_TREE ? s->scale * 0.8f + 1.2f
-                                : s->scale * 1.4f + 1.2f;
-}
+#define CAM_NEAR 1.2f   /* must match render.c's gameplay near plane */
 
 /* ------------------------------------------------------------------ */
 
@@ -416,19 +407,22 @@ void scatter_render_draw(const T3DVec3 *eye, const T3DVec3 *target) {
                         inst_center[i].v[2] - eye->v[2] }};
         float d2 = t3d_vec3_dot(&to, &to);
 
-        /* Crash guard: never draw an instance the eye is inside (its
-         * geometry would straddle the near plane). */
-        float near = inst_near_radius(s);
-        if (d2 < near * near)
-            continue;
-
         float reach = KIND_DIST[s->kind] + inst_radius[i];
         if (d2 > reach * reach)
             continue;
 
+        /* Crash guard: reject any instance whose bounding sphere can reach
+         * the near plane. This must be a view-axis slab test, not a
+         * Euclidean eye-distance test -- a side-on tree passes a distance
+         * check while canopy verts sit at or behind Z=CAM_NEAR, feeding
+         * tiny3d's clipper the near-camera geometry that trips the
+         * RSP-queue corruption (RDP hang). inst_radius bounds the mesh
+         * (trees measure <=0.51*scale vs the 0.7 assumed), so every drawn
+         * vertex keeps view Z >= CAM_NEAR. Subsumes the behind-camera
+         * reject. */
         float along = t3d_vec3_dot(&to, &fwd);
-        if (along < -inst_radius[i])
-            continue;   /* behind the camera */
+        if (along < inst_radius[i] + CAM_NEAR)
+            continue;
 
         /* Horizontal frustum reject: how far off the view axis the
          * instance sits vs. what the FOV allows at that depth. */

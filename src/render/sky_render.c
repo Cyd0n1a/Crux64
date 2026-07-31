@@ -33,6 +33,11 @@ T3DVec3 SKY_SUN_DIR = {{ 0.48f, 0.62f, 0.34f }};
 #define STARS_TEX    32
 #define MOON_TEX     32
 
+/* These are surface_alloc'd, which means malloc_uncached_aligned: the bake
+ * loops below write straight through to RDRAM, so they need no cache
+ * flush. Never add one — a CACHE instruction on a KSEG1 address is
+ * undefined on the VR4300 and can write back or invalidate an unrelated
+ * dirty line, silently losing a write elsewhere in RAM. */
 static surface_t cloud_surf;
 static surface_t glow_surf;
 static surface_t stars_surf;
@@ -91,8 +96,6 @@ static void bake_clouds(void) {
         }
     }
     noise_seed(MTN_SEED);
-    data_cache_hit_writeback_invalidate(cloud_surf.buffer,
-                                        cloud_surf.stride * CLOUD_TEX);
 }
 
 static void bake_glow(void) {
@@ -110,8 +113,6 @@ static void bake_glow(void) {
             row[x] = (uint16_t)((0xFFu << 8) | (uint8_t)(a * 255.f));
         }
     }
-    data_cache_hit_writeback_invalidate(glow_surf.buffer,
-                                        glow_surf.stride * GLOW_TEX);
 }
 
 static void bake_stars(void) {
@@ -129,7 +130,6 @@ static void bake_stars(void) {
             }
         }
     }
-    data_cache_hit_writeback_invalidate(stars_surf.buffer, stars_surf.stride * STARS_TEX);
 }
 
 static void bake_moon(void) {
@@ -148,7 +148,6 @@ static void bake_moon(void) {
             }
         }
     }
-    data_cache_hit_writeback_invalidate(moon_surf.buffer, moon_surf.stride * MOON_TEX);
 }
 
 static void pack_dome_vert(int vi, float px, float py, float pz,
@@ -255,9 +254,13 @@ void sky_dome_draw(T3DViewport *vp, const T3DVec3 *eye) {
         rdpq_mode_blender(RDPQ_BLENDER_ADDITIVE);
         rdpq_mode_zbuf(false, false);
         rdpq_set_prim_color(RGBA32(255, 255, 255, (uint8_t)(night_blend * 255.f)));
+        /* Translate must stay bounded (rdpq asserts at 1024 texels): wrap by
+         * the tile size like the cloud scroll below, or the drift asserts
+         * once uptime crosses ~82 minutes. */
+        float sdrift = fmodf(time * 0.2f, (float)STARS_TEX);
         rdpq_tex_upload(TILE0, &stars_surf, &(rdpq_texparms_t){
             .s.repeats = REPEAT_INFINITE, .t.repeats = REPEAT_INFINITE,
-            .s.translate = time * 0.2f, .t.translate = time * 0.2f,
+            .s.translate = sdrift, .t.translate = sdrift,
         });
         
         t3d_state_set_drawflags(T3D_FLAG_TEXTURED);

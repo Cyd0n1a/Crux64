@@ -119,7 +119,6 @@ static void draw_cyd(float alpha, float amp, float wt) {
             row[x] = ((unsigned)sy < (unsigned)H) ? s[sy * sp + x] : 0;
         }
     }
-    data_cache_hit_writeback(d, dst->stride * H);
     rdpq_tex_blit(dst, x0, y0, NULL);
 }
 
