@@ -20,6 +20,8 @@ balance, and stamina.
 
 See [Crux64_GDD.md](Crux64_GDD.md) for the full design document.
 
+![Boxart](Crux64-boxart.png)<br>
+
 ## Hardware requirements
 
 - **Expansion Pak (8MB)** — mandatory (heightmap arrays, display lists, audio buffers)
