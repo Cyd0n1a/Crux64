@@ -213,9 +213,16 @@ Every failure path lands on a defined state rather than propagating.
 - **CRC mismatch.** Treated as corruption: defaults, then rewrite so the next boot
   is clean. Preferred over loading a damaged record, which could poison the
   best-altitude value permanently.
-- **Failed write.** `eeprom_write` returns a status byte. `write_now()` only clears
-  `dirty` when every block write succeeds, so a failed commit is retried at the
-  next rest point instead of being silently dropped.
+- **Failed write.** `write_now()` only clears `dirty` when every block write
+  returns a zero status, so a failed commit is retried at the next rest point
+  rather than being silently dropped. Note that on current libdragon this path
+  is unreachable: `eeprom.c:80` runs `assert(cmd.recv.status == 0x00)` before
+  returning, so a write failure halts the ROM instead of reporting. The check is
+  kept because it is correct and free, not because it can fire today.
+- **Torn write.** The payload block is written before the header block. If power
+  is lost between the two, the stale header's CRC will not match the new payload,
+  so the next boot detects corruption and resets rather than loading a
+  half-updated record.
 - **Payload length disagreement.** If the header's length byte does not match the
   size expected for the detected version, the cart is treated as
   `SAVE_LAYOUT_BLANK` — defaults, then rewrite.
