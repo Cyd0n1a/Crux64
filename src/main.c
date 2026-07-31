@@ -312,34 +312,31 @@ int main(void) {
                 continue;
             }
 
-            if (mr == MENU_NONE) {
-                /* Still paused. Hold the camera where it was and keep the
-                 * frame alive: the wind and heartbeat drop out, but
-                 * synth_poll must still run or the audio buffers underrun. */
-                synth_set_altitude(0.f);
-                synth_set_stress(0.f);
-                synth_set_falling(false);
-                synth_poll();
-                rumble_update(dt);
+            /* Still paused, or resuming on this very frame — either way the
+             * sim must NOT run now. input.c maps A to both the menu confirm
+             * and the climber's chalk (climber.c:812), so falling through on
+             * resume would burn a chalk use every time you unpause with A.
+             * The resume frame costs one frame drawn without the dev HUD:
+             * menu_draw early-outs once closed, so the world renders bare. */
+            synth_set_altitude(0.f);
+            synth_set_stress(0.f);
+            synth_set_falling(false);
+            synth_poll();
+            rumble_update(dt);
 
-                T3DVec3 target = {{ cs->neck[0], cs->neck[1], cs->neck[2] }};
-                float cp = cosf(cam_pitch);
-                T3DVec3 eye = {{
-                    target.v[0] + sinf(cam_yaw) * cp * cam_dist,
-                    target.v[1] + sinf(cam_pitch) * cam_dist,
-                    target.v[2] + cosf(cam_yaw) * cp * cam_dist,
-                }};
-                float ground = mountain_height(eye.v[0], eye.v[2]) + 0.6f;
-                if (eye.v[1] < ground) eye.v[1] = ground;
+            T3DVec3 target = {{ cs->neck[0], cs->neck[1], cs->neck[2] }};
+            float cp = cosf(cam_pitch);
+            T3DVec3 eye = {{
+                target.v[0] + sinf(cam_yaw) * cp * cam_dist,
+                target.v[1] + sinf(cam_pitch) * cam_dist,
+                target.v[2] + cosf(cam_yaw) * cp * cam_dist,
+            }};
+            float ground = mountain_height(eye.v[0], eye.v[2]) + 0.6f;
+            if (eye.v[1] < ground) eye.v[1] = ground;
 
-                render_hud_t hud = { .menu = true, .rumble_ok = in->rumble_present };
-                render_frame(&eye, &target, &hud);
-                continue;
-            }
-
-            /* MENU_RESUME falls through into gameplay on this same frame.
-             * Continuing here instead would render one frame with the menu
-             * already closed and the dev HUD suppressed — a visible blink. */
+            render_hud_t hud = { .menu = true, .rumble_ok = in->rumble_present };
+            render_frame(&eye, &target, &hud);
+            continue;
         }
 
         climber_update(in, cam_yaw, dt);
