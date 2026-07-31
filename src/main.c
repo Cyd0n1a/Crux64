@@ -55,10 +55,16 @@
 #include "meta/save.h"
 #include "meta/dialogue.h"
 #include "meta/prologue.h"
+#include "meta/scene02.h"
 #include "render/render.h"
 #include "render/splash.h"
 #include "render/sky_render.h"
 #include "sim/weather.h"
+
+/* Camp two, the first of the four rest points Maya names in Scene 01. The
+ * route tops out near 480 m, so the checkpoints sit roughly every fifth of
+ * the climb. */
+#define CAMP_TWO_ALT  96.f
 
 int main(void) {
     /* GDD 1.3: Expansion Pak is a hard requirement (heightmap arrays,
@@ -126,12 +132,25 @@ int main(void) {
     bool  title_cued  = false;
     bool  splash_done = false;   /* one-time free of the boot-splash assets */
 
-    /* Prologue (Scene 01, "The Morning After"): a base-camp cutscene that
-     * plays once on New Game — the camera holds the player's dawn view of
-     * Mt. Xerxes while Maya's headset call types out in the dialogue box.
-     * Skippable with Start; hands control to the climber when it ends. */
-    bool  in_prologue = false;
-    float scene_t     = 0.f;
+    /* Cutscenes. Scene 01 ("The Morning After") plays once on New Game at
+     * base camp; Scene 02 ("Crepuscular Twilight Stars") fires the first
+     * time the climber reaches the camp-two checkpoint on foot. Both hold a
+     * fixed first-person view while Maya's headset call types out in the
+     * dialogue box, are skippable with Start, and hand control back to the
+     * climber when they end.
+     *
+     * scene_look_y / scene_alt vary per scene: the base-camp view stares up
+     * at the peak from the valley floor, where camp two is already a third
+     * of the way up it. */
+    bool  in_cutscene  = false;
+    float scene_t      = 0.f;
+    float scene_look_y = 96.f;
+    float scene_alt    = 0.18f;
+
+    /* Scene 02 plays at most once per run. Deliberately session-only, not
+     * saved: Scene 01 replays on New Game too, and the EEPROM path is only
+     * touched at rest points (see save_commit below). */
+    bool  camp2_seen = false;
 
     long long prev = timer_ticks();
 
@@ -190,9 +209,11 @@ int main(void) {
             T3DVec3 eye = {{ sinf(title_ang) * 360.f, 170.f,
                              cosf(title_ang) * 360.f }};
             if (in->start_btn) {
-                in_title    = false;
-                in_prologue = true;
-                scene_t     = 0.f;
+                in_title     = false;
+                in_cutscene  = true;
+                scene_t      = 0.f;
+                scene_look_y = 96.f;    /* the peak, seen from base camp */
+                scene_alt    = 0.18f;
                 int nlines;
                 const dlg_line_t *lines = prologue_scene(&nlines);
                 dialogue_start(lines, nlines);
@@ -221,7 +242,7 @@ int main(void) {
             continue;
         }
 
-        if (in_prologue) {
+        if (in_cutscene) {
             scene_t += dt;
 
             /* Hold the player's first-person dawn view: stand at the neck,
@@ -239,15 +260,15 @@ int main(void) {
                 cs->neck[2] - fdz * push,
             }};
             T3DVec3 target = {{
-                cs->neck[0] + fdx * 42.f, 96.f, cs->neck[2] + fdz * 42.f,
+                cs->neck[0] + fdx * 42.f, scene_look_y, cs->neck[2] + fdz * 42.f,
             }};
 
             dialogue_update(in, dt);
 
-            /* Calm base-camp ambience — gentle wind, the campfire flicker
-             * lights the scene (render_frame drives the fire light). */
+            /* Calm ambience — gentle wind, the campfire flicker lighting the
+             * scene (render_frame drives the fire light). */
             rumble_update(dt);
-            synth_set_altitude(0.18f);
+            synth_set_altitude(scene_alt);
             synth_set_stress(0.f);
             synth_set_falling(false);
             synth_poll();
@@ -259,11 +280,28 @@ int main(void) {
             render_frame(&eye, &target, &hud);
 
             if (!dialogue_active())
-                in_prologue = false;   /* next frame: hand over to gameplay */
+                in_cutscene = false;   /* next frame: hand over to gameplay */
             continue;
         }
 
         climber_update(in, cam_yaw, dt);
+
+        /* Camp two (Scene 02): the first rest point on the route. Gate on
+         * ON_FOOT so the scene can never freeze the player mid-move, hanging
+         * on the wall with stamina draining behind the dialogue box — the
+         * cutscene branch above skips climber_update entirely. */
+        if (!camp2_seen && cs->mode == CLIMBER_ON_FOOT && cs->alt >= CAMP_TWO_ALT) {
+            camp2_seen   = true;
+            in_cutscene  = true;
+            scene_t      = 0.f;
+            scene_look_y = cs->neck[1] + 34.f;   /* the wall still above you */
+            scene_alt    = 0.45f;
+            int nlines;
+            const dlg_line_t *lines = scene02_scene(cs->alt, &nlines);
+            dialogue_start(lines, nlines);
+            save_commit();      /* arriving at a rest point is a save point */
+            continue;
+        }
 
         /* D-pad always orbits; on foot, holding Z hands the stick to
          * the camera too (the sim ignores it while Z is down). */
