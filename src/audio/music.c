@@ -38,6 +38,8 @@ static int       frame_ch;
 static float     ratio;             /* source Hz / OUT_RATE */
 static float     src_pos;           /* fractional read cursor within the frame */
 static float     fade;              /* 0..1 fade-in, re-armed on start + each loop */
+static float     duck = 1.f;        /* current ducking gain, glided toward... */
+static float     duck_target = 1.f; /* ...this, set by music_set_duck */
 
 /* Slide the unconsumed tail to the front and top the window back up from the
  * cartridge. Returns bytes newly read (0 at end-of-file). */
@@ -139,6 +141,12 @@ void music_stop(void) {
 
 bool music_active(void) { return playing; }
 
+void music_set_duck(float d) {
+    if (d < 0.f) d = 0.f;
+    if (d > 1.f) d = 1.f;
+    duck_target = d;
+}
+
 void music_sample(float *l, float *r) {
     if (!playing) { *l = *r = 0.f; return; }
 
@@ -161,7 +169,20 @@ void music_sample(float *l, float *r) {
         fade += 1.f / (OUT_RATE * 0.02f);   /* ~20ms */
         if (fade > 1.f) fade = 1.f;
     }
-    float g = fade * (1.f / 32768.f);
+    /* Glide toward the duck target so pausing fades the music instead of
+     * cutting it. Same shape as the fade-in above. */
+    if (duck != duck_target) {
+        float step = 1.f / (OUT_RATE * 0.08f);   /* ~80ms */
+        if (duck < duck_target) {
+            duck += step;
+            if (duck > duck_target) duck = duck_target;
+        } else {
+            duck -= step;
+            if (duck < duck_target) duck = duck_target;
+        }
+    }
+
+    float g = fade * duck * (1.f / 32768.f);
     *l = sl * g;
     *r = sr * g;
 }

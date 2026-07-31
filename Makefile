@@ -31,6 +31,8 @@ OBJS = \
     $(BUILD_DIR)/src/meta/prologue.o \
     $(BUILD_DIR)/src/meta/scene02.o \
     $(BUILD_DIR)/src/meta/scene03.o \
+    $(BUILD_DIR)/src/meta/menu_nav.o \
+    $(BUILD_DIR)/src/meta/menu.o \
     $(BUILD_DIR)/src/render/render.o \
     $(BUILD_DIR)/src/render/climber_render.o \
     $(BUILD_DIR)/src/render/campsite_render.o \
