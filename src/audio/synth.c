@@ -33,6 +33,9 @@ static inline float white(void) {
     if (rsp_noise_idx >= NOISE_BATCH_SIZE) {
         rsp_synth_white_noise(rsp_noise_buffer, NOISE_BATCH_SIZE);
         rspq_wait();
+        /* The RSP DMA'd straight to RDRAM; drop any stale cached lines
+         * left over from reading the previous batch. */
+        data_cache_hit_invalidate(rsp_noise_buffer, sizeof rsp_noise_buffer);
         rsp_noise_idx = 0;
     }
     /* RSP returns IEEE 754 floats in [1.0, 2.0). Map to [-1.0, 1.0). */

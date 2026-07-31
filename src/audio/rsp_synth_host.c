@@ -14,6 +14,8 @@ void rsp_synth_init(void) {
 }
 
 void rsp_synth_white_noise(float *buffer, uint16_t count) {
-    // CMD 0 is SynthCmd_WhiteNoise
-    rspq_write(rsp_synth_id, 0, count << 16, PhysicalAddr(buffer) & 0xFFFFFF);
+    /* CMD 0 is SynthCmd_WhiteNoise. The first word's top byte belongs to
+     * rspq (overlay id + command index), so count must stay in the low
+     * 24 bits — we keep it in the low 16 and the ucode masks accordingly. */
+    rspq_write(rsp_synth_id, 0, count, PhysicalAddr(buffer) & 0xFFFFFF);
 }

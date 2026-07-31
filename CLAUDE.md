@@ -30,6 +30,17 @@ Physics-based procedural mountain climbing sim for N64. Design doc:
   `t3d_vert_pack_normal()`, never separate bytes.
 - `^` and `$` are rdpq_text escape chars — bare ones assert at draw time;
   write `^^` / `$$` for literals.
+- `t3d_vert_load(verts, offset, count)`: `offset` is a slot in the 70-entry
+  RSP vertex cache (0–68), NOT an index into your buffer. Passing a buffer
+  index makes the RSP write transformed verts past the cache into arbitrary
+  DMEM → trashed rspq state → "wait loop timed out" crashes. Batch ≤70 verts,
+  load at offset 0, advance the source pointer (pair-aligned), 0-based tri
+  indices.
+- `rspq_write(id, cmd, arg0, ...)`: the top byte of the first word belongs to
+  rspq (overlay|command). arg0 must fit in 24 bits, and overlay ucode must
+  mask the command byte off a0 (`andi`, not `srl 16`). Custom overlays: no
+  stack — `sp` is just a zeroed GPR; save `ra` in a spare register (only `gp`
+  is reserved) before `jal DMAOut`.
 
 ## Project conventions
 

@@ -28,7 +28,9 @@ T3DVec3 SKY_SUN_DIR = {{ 0.48f, 0.62f, 0.34f }};
 
 /* --- sun / flare ------------------------------------------------------ */
 #define GLOW_TEX     32          /* IA16 radial falloff, reused per blob */
-#define STARS_TEX    64
+/* RGBA16 must stay <= 4KB TMEM: 64x64x2 = 8KB asserts in rdpq_tex_upload.
+ * 32x32 (2KB) tiles seamlessly via REPEAT_INFINITE like the other maps. */
+#define STARS_TEX    32
 #define MOON_TEX     32
 
 static surface_t cloud_surf;

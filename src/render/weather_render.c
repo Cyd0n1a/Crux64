@@ -114,13 +114,16 @@ void weather_render_draw(const T3DVec3 *eye, const T3DVec3 *target) {
     t3d_state_set_drawflags(T3D_FLAG_SHADED | T3D_FLAG_DEPTH);
     t3d_matrix_push(part_mat);
 
-    // Draw in batches of T3D_VERTEX_CACHE_SIZE (70 / 3 = 23 tris)
-    for (int i = 0; i < num_parts; i += 23) {
+    /* One t3d_vert_load must stay <= T3D_VERTEX_CACHE_SIZE (70) and its
+     * offset is a slot in that cache, not into our buffer. Batch 22 tris
+     * (66 verts) so each batch fits the cache and starts on a
+     * T3DVertPacked pair boundary; indices are relative to the batch. */
+    for (int i = 0; i < num_parts; i += 22) {
         int count = num_parts - i;
-        if (count > 23) count = 23;
-        t3d_vert_load(part_verts, i * 3, count * 3);
+        if (count > 22) count = 22;
+        t3d_vert_load(&part_verts[i * 3 / 2], 0, count * 3);
         for (int j = 0; j < count; j++) {
-            int v = i * 3 + j * 3;
+            int v = j * 3;
             t3d_tri_draw(v, v + 1, v + 2);
         }
         t3d_tri_sync();

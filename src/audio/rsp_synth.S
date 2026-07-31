@@ -19,11 +19,12 @@ DMA_BUFFER: .space 1024
 
     .text
 
-    # a0: [upper 16: len in 32-bit words] [lower 16: cmd]
-    # a1: RDRAM pointer
+    # a0: [top byte: rspq command byte] [low 16 bits: len in 32-bit words]
+    # a1: RDRAM pointer (physical, 24-bit)
 SynthCmd_WhiteNoise:
-    srl s6, a0, 16        # s6 = count in words
+    andi s6, a0, 0xFFFF   # s6 = count in words (mask off the command byte)
     move s1, a1           # s1 = rdram ptr
+    move fp, ra           # save return address across the DMAOut jals
     
     la t0, PRNG_STATE
     lw s3, 0(t0)          # s3 = rng state
@@ -70,17 +71,9 @@ InnerLoop:
     sll t5, s2, 2         # size in bytes (words * 4)
     addi t0, t5, -1       # t0 = bytes - 1
     
-    # Save volatile state before jal
-    addiu sp, -4
-    sw ra, 0(sp)
-    
-    jal DMAOut            # Wait, DMAOut destroys at, t2
+    jal DMAOut            # destroys at, t2, ra (ra saved in fp)
     nop
-    
-    # restore volatile state
-    lw ra, 0(sp)
-    addiu sp, 4
-    
+
     sll t5, s2, 2
     add s1, t5            # rdram += bytes
     
@@ -90,5 +83,5 @@ InnerLoop:
 Done:
     la t0, PRNG_STATE
     sw s3, 0(t0)          # save rng state
-    jr ra
+    jr fp
     nop
