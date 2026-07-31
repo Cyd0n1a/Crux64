@@ -28,6 +28,12 @@ void music_play(music_track_t t);   /* (re)start a track, or MUSIC_NONE to stop 
 void music_stop(void);
 bool music_active(void);            /* true while a track is producing samples */
 
+/* Pause ducking: scales the music down without touching the track state.
+ * Glided over ~80ms inside music_sample so it never clicks. Kept separate
+ * from the user volume that stage 2 adds — the two multiply, so a duck can
+ * never fight the slider. d is clamped to 0..1; 1.0 is full volume. */
+void music_set_duck(float d);
+
 /* Pull the next stereo output sample (-1..1), decoding more of the stream
  * on demand. Writes 0 when nothing is playing. Called once per output
  * sample from the synth mix loop. */
