@@ -10,6 +10,7 @@ typedef struct {
     int   grip_count;
     bool  title;         /* title screen: far fog, cube logo, no HUD */
     bool  cinematic;     /* prologue: draw the scene + dialogue box, no dev HUD */
+    bool  menu;          /* pause menu: dim the world, hide the dev HUD */
 
     /* Phase 4 (GDD 4): per-limb stamina meter + inventory corner. */
     const float *stam;   /* LIMB_COUNT staminas, NULL hides the bars */

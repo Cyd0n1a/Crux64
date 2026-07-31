@@ -11,6 +11,7 @@
 #include "splash.h"
 #include "sky_render.h"
 #include "../meta/dialogue.h"
+#include "../meta/menu.h"
 #include "../gen/mountain.h"
 #include "../sim/campsite.h"
 #include "../sim/weather.h"
@@ -163,6 +164,7 @@ void render_init(void) {
     rdpq_font_t *font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(FONT_BUILTIN_DEBUG_MONO, font);
     dialogue_init(font);
+    menu_init(font);
 }
 
 static void draw_hud(const render_hud_t *hud) {
@@ -385,6 +387,10 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
         /* Prologue: the base-camp scene plays behind the dialogue box; the
          * dev HUD stays hidden so the frame reads cinematic. */
         dialogue_draw();
+    } else if (hud->menu) {
+        /* Paused: the frozen world dims behind the panel and the dev HUD
+         * steps aside so the stamina bars don't compete with it. */
+        menu_draw();
     } else {
         draw_hud(hud);
     }
