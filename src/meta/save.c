@@ -1,36 +1,71 @@
 /* Phase 6 (GDD 3.4): EEPROM-backed save state.
  *
- * libdragon's eepromfs (eepfs_*) gives us a signature block that tells a
- * blank (or another game's) cart apart from ours, so first boot lays down
- * a clean slot instead of reading uninitialised garbage as a "record".
- * One 8-byte file at "/crux64.sav" — read/written whole via eepfs_read /
- * eepfs_write (no stdio needed). */
+ * The cart is addressed through libdragon's low-level eeprom_read /
+ * eeprom_write rather than eepromfs. eepromfs identifies a filesystem by
+ * CRCing its raw eepfs_entry_t array, which holds `path` as a pointer, so
+ * its signature moves whenever the linker relocates the path literal and
+ * eepfs_verify_signature() then wipes the cart. Four real carts showed four
+ * different signatures for the same file table. Here identity is a literal
+ * magic value, which recompilation cannot disturb.
+ *
+ * Block 0 is the header (magic, version, payload CRC, payload length),
+ * block 1 the payload. See src/meta/save_format.h. */
 
 #include <libdragon.h>
 #include <string.h>
 
 #include "save.h"
+#include "save_format.h"
 
-#define SAVE_PATH "/crux64.sav"
+#define HDR_BLOCK      0
+#define PAYLOAD_BLOCK  1
 
 static save_data_t rec;        /* live record */
 static bool  present;          /* an EEPROM is mounted and writable */
 static bool  dirty;            /* rec changed since the last flush */
 static float time_accum;       /* seconds not yet rolled into a minute */
 
-static const eepfs_entry_t eeprom_files[] = {
-    { SAVE_PATH, sizeof(save_data_t) },
-};
-
 static void defaults(void) {
     memset(&rec, 0, sizeof rec);
     rec.initials[0] = rec.initials[1] = rec.initials[2] = 'A';
 }
 
+/* Copies the record into a whole-block buffer. The payload is exactly one
+ * block today; the memset keeps the tail defined if it ever is not, so the
+ * CRC stays reproducible. */
+static void pack_payload(uint8_t out[SAVE_BLOCK_SIZE]) {
+    memset(out, 0, SAVE_BLOCK_SIZE);
+    memcpy(out, &rec, sizeof rec);
+}
+
 static void write_now(void) {
     if (!present) return;
-    if (eepfs_write(SAVE_PATH, &rec, sizeof rec) == EEPFS_ESUCCESS)
+
+    uint8_t payload[SAVE_BLOCK_SIZE];
+    uint8_t hdr[SAVE_BLOCK_SIZE];
+    pack_payload(payload);
+    save_header_build(hdr, SAVE_VERSION, payload, (uint8_t)sizeof rec);
+
+    /* Payload first: if power is lost between the two writes, the stale
+     * header's CRC will not match the new payload, so the next boot resets
+     * instead of loading a half-updated record.
+     *
+     * Note libdragon asserts on a bad status (eeprom.c:80) before we ever
+     * see it, so in practice a failure halts rather than returning here.
+     * The check costs nothing and is correct if that ever changes. */
+    if (eeprom_write(PAYLOAD_BLOCK, payload) == 0 &&
+        eeprom_write(HDR_BLOCK, hdr) == 0)
         dirty = false;
+}
+
+/* Adopts a payload block into `rec`, rejecting a slot that was cleared but
+ * never written — the same guard the eepromfs version used. */
+static bool adopt_payload(const uint8_t payload[SAVE_BLOCK_SIZE]) {
+    save_data_t in;
+    memcpy(&in, payload, sizeof in);
+    if (in.initials[0] == '\0') return false;
+    rec = in;
+    return true;
 }
 
 bool save_init(void) {
@@ -40,20 +75,54 @@ bool save_init(void) {
     time_accum = 0.f;
 
     if (eeprom_present() == EEPROM_NONE) return false;
-    if (eepfs_init(eeprom_files, 1) != EEPFS_ESUCCESS) return false;
     present = true;
 
-    if (!eepfs_verify_signature()) {
-        /* Fresh or foreign cart: lay down our signature + a clean slot. */
-        eepfs_wipe();
-        write_now();            /* persist the defaults */
-        return true;
+    uint8_t block0[SAVE_BLOCK_SIZE];
+    uint8_t payload[SAVE_BLOCK_SIZE];
+    uint8_t version = 0, len = 0;
+
+    eeprom_read(HDR_BLOCK, block0);
+
+    switch (save_format_detect(block0, &version, &len)) {
+    case SAVE_LAYOUT_CURRENT:
+        if (len != sizeof rec) {       /* header disagrees about the payload */
+            write_now();
+            break;
+        }
+        eeprom_read(PAYLOAD_BLOCK, payload);
+        if (!save_payload_valid(block0, payload, len) || !adopt_payload(payload)) {
+            defaults();
+            write_now();
+        }
+        break;
+
+    case SAVE_LAYOUT_OLDER:
+        /* No version-0 CRX cart was ever released, so this is unreachable
+         * today. It exists so stage 2 can add a migration by filling in a
+         * branch rather than restructuring save_init, and is covered by a
+         * host test that builds a synthetic version-0 header. */
+        defaults();
+        write_now();
+        break;
+
+    case SAVE_LAYOUT_LEGACY:
+        /* Pre-fix cart written by eepromfs: its record sits at block 1,
+         * because eepfs reserved exactly one block for the signature
+         * (eepromfs.c:241). Adopt it and restamp in the new format. */
+        eeprom_read(PAYLOAD_BLOCK, payload);
+        if (!adopt_payload(payload)) defaults();
+        dirty = true;
+        write_now();
+        break;
+
+    case SAVE_LAYOUT_NEWER:
+    case SAVE_LAYOUT_BLANK:
+    default:
+        defaults();
+        write_now();
+        break;
     }
 
-    if (eepfs_read(SAVE_PATH, &rec, sizeof rec) != EEPFS_ESUCCESS)
-        defaults();
-    /* A wiped-but-never-written slot reads all zeros. */
-    if (rec.initials[0] == '\0') defaults();
     return true;
 }
 
