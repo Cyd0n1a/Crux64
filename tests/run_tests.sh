@@ -7,3 +7,6 @@ mkdir -p build
 gcc -std=c99 -O1 -Wall -Wextra -Werror \
     -o build/menu_nav_test menu_nav_test.c ../src/meta/menu_nav.c -lm
 ./build/menu_nav_test
+gcc -std=c99 -O1 -Wall -Wextra -Werror \
+    -o build/save_format_test save_format_test.c ../src/meta/save_format.c
+./build/save_format_test
