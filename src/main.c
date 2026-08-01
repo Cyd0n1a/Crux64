@@ -9,8 +9,8 @@
  * (c) 2026 Amanda Hariette-Scott and Cydonis Heavy Industries.
  *
  * Phase 6 (GDD 5.6): EEPROM save state. The run's max altitude, fall
- * count and play time persist across power-offs in a single 8-byte
- * eepromfs block (src/meta/save.c) — recorded in RAM each frame and
+ * count and play time persist across power-offs in a two-block container
+ * at EEPROM blocks 0-1 (src/meta/save.c) — recorded in RAM each frame and
  * flushed only at rest points (piton checkpoints, the end of a fall).
  * The title screen shows the saved best.
  *
