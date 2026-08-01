@@ -55,6 +55,11 @@ static const menu_screen_t title_screen = {
     .panel_alpha = 128,
 };
 
+/**
+ * Gets the title menu screen definition.
+ *
+ * @return The title menu screen.
+ */
 const menu_screen_t *menu_title_screen(void) { return &title_screen; }
 
 static bool       g_open;
@@ -63,19 +68,36 @@ static menu_nav_t g_nav;
 
 static const menu_screen_t *g_screen;
 static const menu_screen_t *g_return_to;   /* NULL when at the root */
-static const menu_screen_t *g_settings;    /* registered by settings.c */
+static const menu_screen_t *g_settings;    /**
+ * Registers the menu screen used for settings.
+ *
+ * @param s Settings menu screen to register.
+ */
 
 void menu_register_settings(const menu_screen_t *s) { g_settings = s; }
 
+/**
+ * Determines whether the registered settings screen is currently open.
+ *
+ * @return `true` if the menu is open on the registered settings screen, `false` otherwise.
+ */
 bool menu_settings_open(void) {
     return g_open && g_settings && g_screen == g_settings;
 }
 
+/**
+ * Initializes menu font styles for selected and dimmed text.
+ * @param font Font used to configure the menu styles.
+ */
 void menu_init(rdpq_font_t *font) {
     rdpq_font_style(font, STY_SEL, &(rdpq_fontstyle_t){ .color = RGBA32(240, 196, 108, 255) });
     rdpq_font_style(font, STY_DIM, &(rdpq_fontstyle_t){ .color = RGBA32(150, 158, 176, 255) });
 }
 
+/**
+ * Opens a menu screen and resets its navigation state.
+ * @param s Screen to display.
+ */
 void menu_open_screen(const menu_screen_t *s) {
     g_open      = true;
     g_confirm   = false;
@@ -84,10 +106,23 @@ void menu_open_screen(const menu_screen_t *s) {
     menu_nav_reset(&g_nav, s->count);
 }
 
+/**
+ * Opens the pause menu.
+ */
 void menu_open(void) { menu_open_screen(&pause_screen); }
 
+/**
+ * Determines whether a menu is currently open.
+ *
+ * @return `true` if a menu is open, `false` otherwise.
+ */
 bool menu_active(void) { return g_open; }
 
+/**
+ * Closes the menu and clears its confirmation and parent-screen state.
+ * @param r Result to return after closing the menu.
+ * @returns The supplied menu result.
+ */
 static menu_result_t close_with(menu_result_t r) {
     g_open      = false;
     g_confirm   = false;
@@ -95,8 +130,12 @@ static menu_result_t close_with(menu_result_t r) {
     return r;
 }
 
-/* Back out one level: pop to the parent screen if there is one, otherwise
- * close the menu entirely. The pop is where a screen flushes its state. */
+/**
+ * Navigates back to the parent menu screen or closes the menu when no parent exists.
+ *
+ * @returns `MENU_NONE` when returning to a parent screen; otherwise, the result of
+ * closing the menu.
+ */
 static menu_result_t back_out(void) {
     if (!g_return_to) return close_with(MENU_RESUME);
 
@@ -107,6 +146,14 @@ static menu_result_t back_out(void) {
     return MENU_NONE;
 }
 
+/**
+ * Processes menu input, updates navigation and values, and performs the
+ * selected menu action.
+ *
+ * @param in Current input state.
+ * @param dt Elapsed time used for repeat navigation.
+ * @return The resulting menu action, or MENU_NONE when the menu remains open.
+ */
 menu_result_t menu_update(const input_state_t *in, float dt) {
     if (!g_open) return MENU_NONE;
 
@@ -182,6 +229,9 @@ menu_result_t menu_update(const input_state_t *in, float dt) {
     }
 }
 
+/**
+ * Draws the active menu, including its panel, title, confirmation prompt, and item values.
+ */
 void menu_draw(void) {
     if (!g_open || !g_screen) return;
 

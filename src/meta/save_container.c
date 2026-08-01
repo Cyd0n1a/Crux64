@@ -3,6 +3,16 @@
 
 #include "save_container.h"
 
+/**
+ * Loads and validates a save container payload.
+ *
+ * @param base_block EEPROM block containing the save container header.
+ * @param expect_version Save format version expected by the caller.
+ * @param allow_legacy Whether legacy save formats may be accepted.
+ * @param payload Buffer receiving the validated payload.
+ * @param len Expected payload length.
+ * @return The detected save layout, or `SAVE_LAYOUT_BLANK` when validation fails.
+ */
 save_layout_t save_container_load(int base_block, uint8_t expect_version,
                                   bool allow_legacy,
                                   uint8_t *payload, uint8_t len) {
@@ -24,6 +34,15 @@ save_layout_t save_container_load(int base_block, uint8_t expect_version,
     return SAVE_LAYOUT_CURRENT;
 }
 
+/**
+ * Stores a versioned payload in EEPROM.
+ *
+ * @param base_block EEPROM block containing the record header.
+ * @param version Save format version to store.
+ * @param payload Payload data to store.
+ * @param len Number of payload bytes to store.
+ * @return `true` if both EEPROM writes succeed, `false` otherwise.
+ */
 bool save_container_store(int base_block, uint8_t version,
                           const uint8_t *payload, uint8_t len) {
     uint8_t block[SAVE_BLOCK_SIZE];

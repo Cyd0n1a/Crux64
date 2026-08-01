@@ -24,13 +24,18 @@
 static save_data_t rec;        /* live record */
 static bool  present;          /* an EEPROM is mounted and writable */
 static bool  dirty;            /* rec changed since the last flush */
-static float time_accum;       /* seconds not yet rolled into a minute */
+static float time_accum;       /**
+ * Resets the live save record to its default values.
+ */
 
 static void defaults(void) {
     memset(&rec, 0, sizeof rec);
     rec.initials[0] = rec.initials[1] = rec.initials[2] = 'A';
 }
 
+/**
+ * Persists the current progress record when EEPROM storage is available.
+ */
 static void write_now(void) {
     if (!present) return;
     if (save_container_store(PROGRESS_BASE, SAVE_PROGRESS_VERSION,
@@ -48,6 +53,11 @@ static bool adopt_payload(const uint8_t payload[SAVE_BLOCK_SIZE]) {
     return true;
 }
 
+/**
+ * Initializes progress state from EEPROM and creates or updates the stored record when needed.
+ *
+ * @returns `true` if EEPROM is present, `false` otherwise.
+ */
 bool save_init(void) {
     defaults();
     present    = false;

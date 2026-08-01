@@ -4,6 +4,12 @@ static const float sens_table[SET_SENS_MAX + 1] = {
     0.50f, 0.75f, 1.00f, 1.50f, 2.00f,
 };
 
+/**
+ * Initializes settings with the default music, sound, camera sensitivity,
+ * rumble, and stamina bar values.
+ *
+ * @param s Settings structure to initialize.
+ */
 void settings_data_defaults(save_settings_t *s) {
     s->music_vol = 7;
     s->sfx_vol   = 7;
@@ -12,7 +18,12 @@ void settings_data_defaults(save_settings_t *s) {
     for (int i = 0; i < 4; i++) s->reserved[i] = 0;
 }
 
-/* Zero for the three scalar settings, which live in their own bytes. */
+/**
+ * Maps a toggle setting identifier to its corresponding flag bit.
+ *
+ * @param id Setting identifier.
+ * @returns The flag bit for the setting, or zero if it has no associated flag.
+ */
 static uint8_t flag_bit(int id) {
     switch (id) {
     case SET_INVERT_X:    return SET_FLAG_INVERT_X;
@@ -32,6 +43,12 @@ static int id_vmax(int id) {
     }
 }
 
+/**
+ * Gets the value of a scalar or toggle setting.
+ * @param s Settings data to read.
+ * @param id Identifier of the setting to retrieve.
+ * @return The scalar setting value, or `1` when the toggle is enabled and `0` otherwise.
+ */
 int settings_data_get(const save_settings_t *s, int id) {
     switch (id) {
     case SET_MUSIC_VOL: return s->music_vol;
@@ -44,6 +61,12 @@ int settings_data_get(const save_settings_t *s, int id) {
     }
 }
 
+/**
+ * Adjusts a setting by a delta within its valid range.
+ * @param s Settings data to update.
+ * @param id Identifier of the setting to adjust.
+ * @param delta Amount to add to the current setting value.
+ */
 void settings_data_adjust(save_settings_t *s, int id, int delta) {
     const int hi = id_vmax(id);
     int v = settings_data_get(s, id) + delta;
@@ -64,6 +87,11 @@ void settings_data_adjust(save_settings_t *s, int id, int delta) {
     }
 }
 
+/**
+ * Returns the camera sensitivity multiplier for the stored setting.
+ * @param s Settings containing the camera sensitivity index.
+ * @returns The camera sensitivity multiplier.
+ */
 float settings_data_sens(const save_settings_t *s) {
     uint8_t i = s->cam_sens;
     if (i > SET_SENS_MAX) i = SET_SENS_MAX;
@@ -88,6 +116,11 @@ static const menu_item_t rows[] = {
     { "BACK",        MENU_ACTION, MENU_BACK,       0,            NULL     },
 };
 
+/**
+ * Returns the settings menu rows and optionally their count.
+ * @param count Output location for the number of menu rows.
+ * @return The settings menu row array.
+ */
 const menu_item_t *settings_data_rows(int *count) {
     if (count) *count = (int)(sizeof rows / sizeof rows[0]);
     return rows;

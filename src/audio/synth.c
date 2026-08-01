@@ -241,6 +241,11 @@ static const float pad_freq[4] = { 55.00f, 65.41f, 82.41f, 110.00f };  /* A mino
 /* Heartbeat: a 46Hz thud whose rate + volume climb with stress. */
 static float hb_clock, hb_env, hb_ph;
 
+/**
+ * Renders synthesized ambient layers, heartbeat, one-shot voices, and streamed music into an interleaved stereo buffer.
+ * @param buf Destination buffer for interleaved 16-bit stereo samples.
+ * @param nframes Number of stereo frames to render.
+ */
 static void render(short *buf, int nframes) {
     /* Real music now owns the "bed" role the drone was standing in for;
      * silence the drone whenever a track is streaming (GDD 3.3). If the
@@ -349,6 +354,9 @@ static void render(short *buf, int nframes) {
     }
 }
 
+/**
+ * Initializes the synthesizer and its audio processing state.
+ */
 void synth_init(void) {
     for (int i = 0; i < LUT_SIZE; i++)
         sine_lut[i] = sinf((float)i * (6.2831853f / (float)LUT_SIZE));
@@ -358,11 +366,19 @@ void synth_init(void) {
     rsp_synth_init();
 }
 
+/**
+ * Set the user-configurable music and sound-effect gains.
+ * @param music Music gain, clamped to the range [0, 1].
+ * @param sfx Sound-effect gain, clamped to the range [0, 1].
+ */
 void synth_set_gains(float music, float sfx) {
     user_music_gain = clampf(music, 0.f, 1.f);
     user_sfx_gain   = clampf(sfx,   0.f, 1.f);
 }
 
+/**
+ * Submits rendered audio to all currently available output buffers.
+ */
 void synth_poll(void) {
     while (audio_can_write()) {
         short *buf = audio_write_begin();

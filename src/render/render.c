@@ -233,6 +233,13 @@ static void draw_title_hud(const render_hud_t *hud) {
                      "(c) 2026 Cydonis Heavy Industries");
 }
 
+/**
+ * Renders a complete frame for the title, cinematic, menu, or gameplay mode.
+ *
+ * @param eye Camera position.
+ * @param target Point toward which the camera is directed.
+ * @param hud HUD and mode state used to select overlays and rendering options.
+ */
 void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
                   const render_hud_t *hud) {
     /* CPU meter: period between successive frames (render_frame runs once per

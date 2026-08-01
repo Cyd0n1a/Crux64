@@ -33,6 +33,19 @@ void save_header_build(uint8_t out[SAVE_BLOCK_SIZE], uint8_t version,
  * happened to write it. */
 static const uint8_t legacy_sig[6] = { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08 };
 
+/**
+ * Detects the save layout and extracts the format version and payload length.
+ *
+ * @param block0 Block containing the save header to inspect.
+ * @param expect_version Version considered current.
+ * @param allow_legacy Whether to recognize the legacy save format.
+ * @param out_version Optional destination for the detected format version.
+ * @param out_len Optional destination for the stored payload length.
+ * @return The detected save layout. Header versions matching, below, or above
+ *         expect_version produce SAVE_LAYOUT_CURRENT, SAVE_LAYOUT_OLDER, or
+ *         SAVE_LAYOUT_NEWER, respectively; recognized legacy and unrecognized
+ *         blocks produce SAVE_LAYOUT_LEGACY and SAVE_LAYOUT_BLANK.
+ */
 save_layout_t save_format_detect(const uint8_t block0[SAVE_BLOCK_SIZE],
                                  uint8_t expect_version, bool allow_legacy,
                                  uint8_t *out_version, uint8_t *out_len) {

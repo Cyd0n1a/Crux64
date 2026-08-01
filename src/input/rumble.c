@@ -8,12 +8,20 @@ static float pwm_acc;
 static bool  motor_on;
 static bool  enabled = true;
 
+/**
+ * Resets rumble state and enables rumble output.
+ */
 void rumble_init(void) {
     level = fade = pwm_acc = 0.f;
     motor_on = false;
     enabled  = true;
 }
 
+/**
+ * Enables or disables rumble output.
+ *
+ * @param on Whether rumble should be enabled.
+ */
 void rumble_set_enabled(bool on) {
     enabled = on;
     if (!enabled) {
@@ -23,6 +31,11 @@ void rumble_set_enabled(bool on) {
     }
 }
 
+/**
+ * Starts or refreshes rumble when enabled and the requested strength exceeds the current level.
+ * @param strength Requested rumble strength, capped at 1.0.
+ * @param duration Rumble duration in seconds, with a minimum of 0.05 seconds.
+ */
 void rumble_kick(float strength, float duration) {
     if (!enabled) return;
     if (strength <= level) return;

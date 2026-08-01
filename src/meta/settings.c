@@ -16,14 +16,28 @@ static save_settings_t cur;
 static bool            dirty;
 static menu_screen_t   screen;
 
+/**
+ * Applies the current audio volume and rumble settings.
+ */
 static void apply(void) {
     synth_set_gains((float)cur.music_vol / (float)SET_VOL_MAX,
                     (float)cur.sfx_vol   / (float)SET_VOL_MAX);
     rumble_set_enabled((cur.flags & SET_FLAG_RUMBLE) != 0);
 }
 
+/**
+ * Retrieves the current value for a settings menu row.
+ *
+ * @param id Identifier of the settings row.
+ * @return The current value of the specified settings row.
+ */
 static int row_get(int id) { return settings_data_get(&cur, id); }
 
+/**
+ * Adjusts a settings row and applies changes immediately.
+ * @param id Identifier of the settings row to adjust.
+ * @param delta Amount by which to adjust the setting.
+ */
 static void row_set(int id, int delta) {
     const int before = settings_data_get(&cur, id);
     settings_data_adjust(&cur, id, delta);
@@ -32,7 +46,11 @@ static void row_set(int id, int delta) {
     apply();                 /* live: you hear and feel what you adjust */
 }
 
-/* Fires when the settings screen pops. The only write path. */
+/**
+ * Saves modified settings when the settings screen closes.
+ *
+ * Settings remain marked dirty if persistence fails.
+ */
 static void row_close(void) {
     if (!dirty) return;
     if (eeprom_present() == EEPROM_NONE) { dirty = false; return; }
@@ -42,6 +60,10 @@ static void row_close(void) {
         dirty = false;
 }
 
+/**
+ * Initializes the settings, registers the settings menu, and applies the
+ * loaded or default values.
+ */
 void settings_init(void) {
     int count = 0;
     const menu_item_t *rows = settings_data_rows(&count);
@@ -73,4 +95,9 @@ void settings_init(void) {
     apply();
 }
 
+/**
+ * Get the current settings.
+ *
+ * @return Pointer to the current settings structure.
+ */
 const save_settings_t *settings_get(void) { return &cur; }

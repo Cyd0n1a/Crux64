@@ -68,6 +68,9 @@
  * the climb. */
 #define CAMP_TWO_ALT  96.f
 
+/**
+ * Initializes the game systems and runs the main game loop.
+ */
 int main(void) {
     /* GDD 1.3: Expansion Pak is a hard requirement (heightmap arrays,
      * display lists, audio buffers). libdragon halts with an error
