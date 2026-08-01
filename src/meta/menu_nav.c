@@ -6,6 +6,8 @@ void menu_nav_reset(menu_nav_t *n, int count) {
     n->repeat_t = 0.f;
     n->last_dir = 0;
     n->lock     = true;
+    n->h_repeat_t = 0.f;
+    n->h_last_dir = 0;
 }
 
 bool menu_nav_take_lock(menu_nav_t *n) {
@@ -45,4 +47,25 @@ bool menu_nav_step(menu_nav_t *n, int dir, float dt) {
         if (n->cursor >= n->count) n->cursor = 0;
     }
     return move;
+}
+
+int menu_nav_step_h(menu_nav_t *n, int dir, float dt) {
+    if (dir == 0) {               /* released: re-arm the immediate move */
+        n->h_last_dir = 0;
+        n->h_repeat_t = 0.f;
+        return 0;
+    }
+
+    bool move;
+    if (dir != n->h_last_dir) {
+        n->h_last_dir = dir;
+        n->h_repeat_t = MENU_NAV_DELAY;
+        move = true;
+    } else {
+        n->h_repeat_t -= dt;
+        move = (n->h_repeat_t <= 0.f);
+        if (move) n->h_repeat_t += MENU_NAV_REPEAT;
+    }
+
+    return move ? dir : 0;
 }
