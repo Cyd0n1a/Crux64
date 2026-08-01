@@ -57,6 +57,7 @@
 #include "meta/prologue.h"
 #include "meta/scene02.h"
 #include "meta/menu.h"
+#include "meta/settings.h"
 #include "render/render.h"
 #include "render/splash.h"
 #include "render/sky_render.h"
@@ -88,6 +89,7 @@ int main(void) {
     rumble_init();
     synth_init();
     save_init();
+    settings_init();
     /* Mount the ROM filesystem. If the FS can't be found, music stays silent
      * and the synth's drone bed covers ambience. The boot splash cues its own
      * track (MUSIC_SPLASH); the title loop starts as the splash hands over. */

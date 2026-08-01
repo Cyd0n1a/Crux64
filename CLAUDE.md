@@ -51,6 +51,19 @@ Physics-based procedural mountain climbing sim for N64. Design doc:
   a literal value, so relinking cannot invalidate it. Pre-fix carts are adopted
   by matching only bytes 0–5 of the old signature (`65 65 70 01 00 08`) — bytes
   6–7 are the build-dependent checksum and must never be compared.
+- Two containers, not one: progress at blocks 0–1, settings at blocks 2–3
+  (`src/meta/settings.c`). Growing the payload instead would make every
+  progress commit a three-block ~18 ms write against a 16.7 ms frame, and
+  those fire mid-gameplay at piton placement. Separate containers also make
+  the settings migration free — a pre-settings cart has nothing at block 2,
+  so `save_format_detect` says BLANK and defaults apply.
+- `save_format_detect` takes the expected version and an `allow_legacy`
+  flag because the two containers version independently and the eepromfs
+  signature is meaningful only at block 0.
+- `save_settings_t`'s four reserved bytes are zeroed by `defaults()` and
+  never cleared on store, so a later version can claim them without a
+  version bump. Do not "tidy" that by memsetting the tail before a write —
+  an older build would then destroy a newer build's settings.
 - This is invisible under gopher64, which names saves `CRUX64-<uppercase sha256
   of the ROM>.eep` and so hands every rebuild a blank EEPROM. It only bites on
   hardware, where one cart is reflashed repeatedly. To test save changes, copy

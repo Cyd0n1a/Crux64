@@ -6,13 +6,25 @@ static float level;      /* current strength 0..1 */
 static float fade;       /* strength lost per second */
 static float pwm_acc;
 static bool  motor_on;
+static bool  enabled = true;
 
 void rumble_init(void) {
     level = fade = pwm_acc = 0.f;
     motor_on = false;
+    enabled  = true;
+}
+
+void rumble_set_enabled(bool on) {
+    enabled = on;
+    if (!enabled) {
+        /* Kill anything mid-decay; rumble_update drops the motor next frame. */
+        level = 0.f;
+        fade  = 0.f;
+    }
 }
 
 void rumble_kick(float strength, float duration) {
+    if (!enabled) return;
     if (strength <= level) return;
     if (strength > 1.f) strength = 1.f;
     if (duration < 0.05f) duration = 0.05f;

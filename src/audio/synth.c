@@ -8,6 +8,12 @@
  * for the wind, heartbeat and event SFX, which are clamped in on top. */
 #define MUSIC_GAIN 0.62f
 
+/* Player volumes (settings.c). MUSIC_GAIN is the fixed mix balance; these
+ * scale on top of it, and music.c's pause duck is a third multiplier, so
+ * none of the three can fight the others. */
+static float user_music_gain = 1.f;
+static float user_sfx_gain   = 1.f;
+
 /* GDD 3.3: 22kHz mono keeps a big margin of CPU for the sim while the
  * continuous layers run every sample. Output is duplicated L=R. */
 #define SAMPLE_RATE 22050
@@ -334,8 +340,10 @@ static void render(short *buf, int nframes) {
         /* Fold in the streamed MP3 (stereo), diegetic layers centred on top. */
         float ml, mr;
         music_sample(&ml, &mr);
-        float outL = clampf(sample + ml * MUSIC_GAIN, -1.f, 1.f);
-        float outR = clampf(sample + mr * MUSIC_GAIN, -1.f, 1.f);
+        float outL = clampf(sample * user_sfx_gain +
+                            ml * MUSIC_GAIN * user_music_gain, -1.f, 1.f);
+        float outR = clampf(sample * user_sfx_gain +
+                            mr * MUSIC_GAIN * user_music_gain, -1.f, 1.f);
         buf[i * 2]     = (short)(outL * 26000.f);
         buf[i * 2 + 1] = (short)(outR * 26000.f);
     }
@@ -348,6 +356,11 @@ void synth_init(void) {
     hb_clock = 0.9f;
     audio_init(SAMPLE_RATE, 4);
     rsp_synth_init();
+}
+
+void synth_set_gains(float music, float sfx) {
+    user_music_gain = clampf(music, 0.f, 1.f);
+    user_sfx_gain   = clampf(sfx,   0.f, 1.f);
 }
 
 void synth_poll(void) {
