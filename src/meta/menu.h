@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>   /* NULL: row tables are written by host-compiled units */
 #include "../input/input.h"
 
 /* Pause and title menus.

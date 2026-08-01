@@ -10,3 +10,6 @@ gcc -std=c99 -O1 -Wall -Wextra -Werror \
 gcc -std=c99 -O1 -Wall -Wextra -Werror \
     -o build/save_format_test save_format_test.c ../src/meta/save_format.c
 ./build/save_format_test
+gcc -std=c99 -O1 -Wall -Wextra -Werror \
+    -o build/settings_test settings_test.c ../src/meta/settings_data.c
+./build/settings_test
