@@ -6,6 +6,8 @@
 
 "The crux cordis or crux of the heart (from Latin "crux" meaning "cross") is the area on the lower back side of the heart where the coronary sulcus (the groove separating the atria from the ventricles) and the posterior interventricular sulcus (the groove separating the left from the right ventricle) meet..."
 
+[![Tech Demo Video 2](https://img.youtube.com/vi/FqKcUVau8u8/0.jpg)](https://www.youtube.com/watch?v=FqKcUVau8u8)
+
 ## About
 
 A physics-based, procedurally generated 3D mountain climbing simulation for
