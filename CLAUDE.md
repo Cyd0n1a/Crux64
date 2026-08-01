@@ -36,6 +36,32 @@ Physics-based procedural mountain climbing sim for N64. Design doc:
 - ares reports these as `[unusual] [CPU] CACHE access to non-cacheable
   address ... at PC ...`; gopher64 does not. Soak under both.
 
+## EEPROM
+
+- Do NOT use eepromfs. `eepfs_init` identifies a filesystem by CRCing the raw
+  `eepfs_entry_t` array, and that struct stores `path` as a *pointer*
+  (`eepromfs.c:280`, `eepromfs.h:59`). The signature therefore depends on where
+  the linker puts the path literal, so any change to a translation unit linked
+  before `save.o` moves it, `eepfs_verify_signature()` fails, and `eepfs_wipe()`
+  destroys the player's record with no error path. Confirmed twice: a `volatile`
+  pad in `input.c` moved the pointer `0x800799f0` → `0x80079a10`, and four real
+  carts carried four different signatures for one unchanged file table.
+- The container in `src/meta/save_format.c` replaces it: block 0 is a
+  `'C','R','X'` + version + payload-CRC header, block 1 the payload. Identity is
+  a literal value, so relinking cannot invalidate it. Pre-fix carts are adopted
+  by matching only bytes 0–5 of the old signature (`65 65 70 01 00 08`) — bytes
+  6–7 are the build-dependent checksum and must never be compared.
+- This is invisible under gopher64, which names saves `CRUX64-<uppercase sha256
+  of the ROM>.eep` and so hands every rebuild a blank EEPROM. It only bites on
+  hardware, where one cart is reflashed repeatedly. To test save changes, copy
+  the `.eep` onto the new ROM's filename:
+  `cp old.eep ~/.local/share/gopher64/saves/CRUX64-$(sha256sum crux64.z64 | awk '{print toupper($1)}').eep`
+- gopher64 only rewrites the `.eep` when the game actually wrote to EEPROM, so
+  an unchanged mtime after a run means "no save occurred", not "run failed".
+- `eeprom_write` asserts on a nonzero status byte (`eeprom.c:80`) rather than
+  returning it, so a write failure halts the ROM. Budget writes accordingly:
+  each block costs ~6 ms and blocks the CPU.
+
 ## Tiny3D gotchas (hard-won, from sibling projects)
 
 - Frame pattern: `rdpq_attach` → `t3d_frame_start` → `t3d_viewport_attach` →
@@ -66,4 +92,5 @@ Physics-based procedural mountain climbing sim for N64. Design doc:
 - GDD constraints: procedural everything (fixed seed `0x63727578`), minimal
   authored assets; the planned exception is minimp3 background music.
   Expansion Pak + Rumble Pak are mandatory hardware.
-- Save: EEPROM 4k via eepromfs (GDD 3.4 `save_data_t`).
+- Save: EEPROM 4k via libdragon's low-level `eeprom_read`/`eeprom_write`
+  (GDD 3.4 `save_data_t`, unchanged). NOT eepromfs — see the EEPROM section.
