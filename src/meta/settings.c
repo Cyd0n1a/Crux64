@@ -63,6 +63,7 @@ void settings_init(void) {
         .count          = count,
         .scrim          = true,
         .start_confirms = false,
+        .panel_alpha    = 255,
         .get            = row_get,
         .set            = row_set,
         .on_close       = row_close,

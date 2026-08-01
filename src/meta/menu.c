@@ -34,11 +34,13 @@ static const menu_screen_t pause_screen = {
     .items = pause_items,
     .count = (int)(sizeof pause_items / sizeof pause_items[0]),
     .scrim = true,
+    .panel_alpha = 255,
 };
 
-/* The title menu draws over the orbiting vista, so no scrim and no title
- * bar — the logo is already there. Start confirms instead of closing,
- * which keeps Start-on-boot starting the climb as it always has. */
+/* The title menu draws over the orbiting vista, so no scrim, no title bar
+ * and a half-transparent panel — the logo and the vista read through it.
+ * Start confirms instead of closing, which keeps Start-on-boot starting
+ * the climb as it always has. */
 static const menu_item_t title_items[] = {
     { "BEGIN CLIMB", MENU_ACTION, MENU_BEGIN_CLIMB, 0, NULL },
     { "SETTINGS",    MENU_ACTION, MENU_SETTINGS,    0, NULL },
@@ -50,6 +52,7 @@ static const menu_screen_t title_screen = {
     .count = (int)(sizeof title_items / sizeof title_items[0]),
     .scrim = false,
     .start_confirms = true,
+    .panel_alpha = 128,
 };
 
 const menu_screen_t *menu_title_screen(void) { return &title_screen; }
@@ -187,16 +190,20 @@ void menu_draw(void) {
     const int  h      = PAD * 2 + rows * ROW_H + (titled ? TITLE_H : 0);
     const int  y0     = (SCREEN_H - h) / 2;
 
-    if (g_screen->scrim) {
-        /* Dim the frozen world. Same idiom as splash.c's crossfade veil. */
-        rdpq_set_mode_standard();
-        rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
-        rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+    /* Both rectangles blend, so the mode is set once. Same idiom as
+     * splash.c's crossfade veil. Fill mode would be marginally cheaper for
+     * an opaque panel but discards alpha outright, and the title panel
+     * needs to be seen through. */
+    rdpq_set_mode_standard();
+    rdpq_mode_combiner(RDPQ_COMBINER_FLAT);
+    rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+
+    if (g_screen->scrim) {          /* dim the frozen world */
         rdpq_set_prim_color(RGBA32(0, 0, 0, 150));
         rdpq_fill_rectangle(0, 0, SCREEN_W, SCREEN_H);
     }
 
-    rdpq_set_mode_fill(RGBA32(12, 14, 22, 255));
+    rdpq_set_prim_color(RGBA32(12, 14, 22, g_screen->panel_alpha));
     rdpq_fill_rectangle(PANEL_X0, y0, PANEL_X1, y0 + h);
     rdpq_set_mode_standard();
 

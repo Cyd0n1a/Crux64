@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stddef.h>   /* NULL: row tables are written by host-compiled units */
 #include "../input/input.h"
 
@@ -56,6 +57,11 @@ typedef struct {
     bool scrim;           /* dim the world behind the panel */
     bool start_confirms;  /* Start confirms rather than closing (the title,
                              which has nothing to back out to) */
+
+    /* Panel opacity, 0-255. Every screen must set this: there is no useful
+     * default, and a screen that forgets it draws no panel at all — which
+     * is obvious on sight rather than subtly wrong. */
+    uint8_t panel_alpha;
 
     /* Supplied by whoever owns the values. NULL on screens of pure
      * actions. This indirection is what keeps settings.h out of menu.c. */
