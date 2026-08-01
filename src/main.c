@@ -211,7 +211,12 @@ int main(void) {
             T3DVec3 target = {{ 0.f, 105.f, 0.f }};
             T3DVec3 eye = {{ sinf(title_ang) * 360.f, 170.f,
                              cosf(title_ang) * 360.f }};
-            if (in->start_btn) {
+            /* The title runs the menu shell: BEGIN CLIMB / SETTINGS, with
+             * the cursor starting on BEGIN CLIMB and Start confirming, so
+             * pressing Start on boot begins the climb as it always has. */
+            if (!menu_active()) menu_open_screen(menu_title_screen());
+
+            if (menu_update(in, dt) == MENU_BEGIN_CLIMB) {
                 in_title     = false;
                 in_cutscene  = true;
                 scene_t      = 0.f;
@@ -300,6 +305,11 @@ int main(void) {
         if (menu_active()) {
             menu_result_t mr = menu_update(in, dt);
 
+            /* A volume slider judged through a duck is not judged at all,
+             * so the settings screen hears the track at full level. Setting
+             * the same value repeatedly is free — music_set_duck glides. */
+            music_set_duck(menu_settings_open() ? 1.f : 0.25f);
+
             if (mr != MENU_NONE)
                 music_set_duck(1.f);    /* one place: every exit restores it */
 
@@ -363,8 +373,18 @@ int main(void) {
         /* D-pad always orbits; on foot, holding Z hands the stick to
          * the camera too (the sim ignores it while Z is down). */
         bool cam_stick = cs->mode == CLIMBER_ON_FOOT && in->z_held;
-        cam_yaw   += (in->cam_x + (cam_stick ? in->stick_x : 0.f)) * dt * 2.2f;
-        cam_pitch += (in->cam_y + (cam_stick ? in->stick_y : 0.f)) * dt * 1.6f;
+        const save_settings_t *sg = settings_get();
+        const float cam_sens = settings_data_sens(sg);
+        const float inv_x = (sg->flags & SET_FLAG_INVERT_X) ? -1.f : 1.f;
+        const float inv_y = (sg->flags & SET_FLAG_INVERT_Y) ? -1.f : 1.f;
+
+        /* Inversion belongs here and nowhere else. Applying it in input.c
+         * would also invert menu navigation, which reads cam_y directly
+         * (menu.c). An inverted-Y player still moves menu cursors normally. */
+        cam_yaw   += inv_x * (in->cam_x + (cam_stick ? in->stick_x : 0.f))
+                   * dt * 2.2f * cam_sens;
+        cam_pitch += inv_y * (in->cam_y + (cam_stick ? in->stick_y : 0.f))
+                   * dt * 1.6f * cam_sens;
         if (cam_pitch < -0.45f) cam_pitch = -0.45f;
         if (cam_pitch >  1.05f) cam_pitch =  1.05f;
 
@@ -490,7 +510,9 @@ int main(void) {
             .rumble_ok   = in->rumble_present,
             .status      = status,
             .grip_count  = grips_count(),
-            .stam        = cs->mode == CLIMBER_ON_FOOT ? NULL : cs->stam,
+            .stam        = (cs->mode != CLIMBER_ON_FOOT &&
+                            (settings_get()->flags & SET_FLAG_STAMINA))
+                         ? cs->stam : NULL,
             .pitons      = cs->pitons,
             .chalk       = cs->chalk_uses,
         };

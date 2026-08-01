@@ -381,6 +381,9 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
 
     if (hud->title) {
         draw_title_hud(hud);
+        /* The title menu draws over the vista and its record line, but
+         * under the splash fade so the boot transition still covers it. */
+        menu_draw();
         /* Boot splash fading out over the title scene (no-op once done). */
         splash_draw_overlay();
     } else if (hud->cinematic) {
