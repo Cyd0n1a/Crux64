@@ -734,20 +734,20 @@ Expected: `exit=0` and empty `git status` output.
 
 - [ ] **Step 7: Verify the legacy rescue against a real pre-fix cart**
 
-The captured images live in the session scratchpad at `eep-fixtures/`. Use one
-with a nonzero record — `legacy-1.eep` has `41 41 41 00 13 00 01 00`, an
-altitude of 19 m:
+The fixture is committed at `tests/fixtures/legacy-eepromfs.eep` — a real pre-fix
+cart whose block 1 reads `41 41 41 00 13 00 01 00`, an altitude of 19 m.
+
+Find the target cart by hashing the ROM rather than by `ls -t`: gopher64 names
+saves `CRUX64-<uppercase sha256 of the ROM>.eep`, and an `ls -t` lookup will
+happily hand you a *different* build's cart.
 
 ```bash
-FIX=/tmp/claude-1000/-home-ahscott-Projects-n64-Crux64/00f060d9-5980-4bd5-85b6-5d9015ca37cf/scratchpad/eep-fixtures/legacy-1.eep
-timeout 15 gopher64 crux64.z64 > /dev/null 2>&1
-NEW=$(ls -t ~/.local/share/gopher64/saves/CRUX64-*.eep | head -1)
-ps -eo pid,comm | grep -iE "^ *[0-9]+ gopher64" | awk '{print $1}' | xargs -r kill -9
-cp "$FIX" "$NEW"
+CART=~/.local/share/gopher64/saves/CRUX64-$(sha256sum crux64.z64 | awk '{print toupper($1)}').eep
+cp tests/fixtures/legacy-eepromfs.eep "$CART"
 timeout 20 gopher64 crux64.z64 > /dev/null 2>&1
 ps -eo pid,comm | grep -iE "^ *[0-9]+ gopher64" | awk '{print $1}' | xargs -r kill -9
 python3 -c "
-d=open('$NEW','rb').read()
+d=open('$CART','rb').read()
 print('block0:', d[0:8].hex(' '))
 print('block1:', d[8:16].hex(' '))
 assert d[0:3]==b'CRX', 'header was not restamped'
