@@ -56,12 +56,87 @@ static void test_header_stores_crc_big_endian(void) {
     CHECK(got == want);
 }
 
+/* Block-0 images from four real pre-fix carts. Identical in bytes 0-5,
+ * different in bytes 6-7 — those two are the pointer-derived checksum that
+ * this whole change exists to stop depending on. */
+static const uint8_t legacy_carts[6][SAVE_BLOCK_SIZE] = {
+    { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08, 0xed, 0xe3 },  /* real */
+    { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08, 0x7f, 0x7f },  /* real */
+    { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08, 0x55, 0x1b },  /* real */
+    { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08, 0x10, 0xbb },  /* real */
+    { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08, 0x00, 0x00 },  /* invented */
+    { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08, 0xff, 0xff },  /* invented */
+};
+
+static void test_detects_current(void) {
+    uint8_t hdr[SAVE_BLOCK_SIZE];
+    uint8_t ver = 99, len = 99;
+    save_header_build(hdr, SAVE_VERSION, sample, (uint8_t)sizeof sample);
+    CHECK(save_format_detect(hdr, &ver, &len) == SAVE_LAYOUT_CURRENT);
+    CHECK(ver == SAVE_VERSION);
+    CHECK(len == sizeof sample);
+}
+
+static void test_detects_older(void) {
+    uint8_t hdr[SAVE_BLOCK_SIZE];
+    uint8_t ver = 99;
+    save_header_build(hdr, 0, sample, (uint8_t)sizeof sample);
+    CHECK(save_format_detect(hdr, &ver, NULL) == SAVE_LAYOUT_OLDER);
+    CHECK(ver == 0);
+}
+
+static void test_detects_newer(void) {
+    uint8_t hdr[SAVE_BLOCK_SIZE];
+    uint8_t ver = 0;
+    save_header_build(hdr, 99, sample, (uint8_t)sizeof sample);
+    CHECK(save_format_detect(hdr, &ver, NULL) == SAVE_LAYOUT_NEWER);
+    CHECK(ver == 99);
+}
+
+static void test_detects_legacy_regardless_of_trailing_crc(void) {
+    for (size_t i = 0; i < 6; i++)
+        CHECK(save_format_detect(legacy_carts[i], NULL, NULL) == SAVE_LAYOUT_LEGACY);
+}
+
+static void test_detects_blank(void) {
+    const uint8_t zeros[SAVE_BLOCK_SIZE] = { 0 };
+    const uint8_t ones[SAVE_BLOCK_SIZE]  = { 0xff, 0xff, 0xff, 0xff,
+                                             0xff, 0xff, 0xff, 0xff };
+    const uint8_t junk[SAVE_BLOCK_SIZE]  = { 'C', 'R', 'Z', 1, 0, 0, 8, 0 };
+    CHECK(save_format_detect(zeros, NULL, NULL) == SAVE_LAYOUT_BLANK);
+    CHECK(save_format_detect(ones,  NULL, NULL) == SAVE_LAYOUT_BLANK);
+    CHECK(save_format_detect(junk,  NULL, NULL) == SAVE_LAYOUT_BLANK);
+}
+
+static void test_detect_tolerates_null_outparams(void) {
+    uint8_t hdr[SAVE_BLOCK_SIZE];
+    save_header_build(hdr, SAVE_VERSION, sample, (uint8_t)sizeof sample);
+    CHECK(save_format_detect(hdr, NULL, NULL) == SAVE_LAYOUT_CURRENT);
+}
+
+static void test_payload_validates(void) {
+    uint8_t hdr[SAVE_BLOCK_SIZE];
+    uint8_t bad[8];
+    save_header_build(hdr, SAVE_VERSION, sample, (uint8_t)sizeof sample);
+    CHECK(save_payload_valid(hdr, sample, (uint8_t)sizeof sample) == true);
+    memcpy(bad, sample, sizeof bad);
+    bad[4] ^= 0x01;
+    CHECK(save_payload_valid(hdr, bad, (uint8_t)sizeof bad) == false);
+}
+
 int main(void) {
     test_crc_is_deterministic();
     test_crc_detects_every_single_byte_flip();
     test_crc_of_empty_is_the_seed();
     test_header_carries_magic_version_len();
     test_header_stores_crc_big_endian();
+    test_detects_current();
+    test_detects_older();
+    test_detects_newer();
+    test_detects_legacy_regardless_of_trailing_crc();
+    test_detects_blank();
+    test_detect_tolerates_null_outparams();
+    test_payload_validates();
 
     if (failures) {
         printf("%d check(s) failed\n", failures);
