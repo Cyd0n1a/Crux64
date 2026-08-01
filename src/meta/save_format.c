@@ -34,6 +34,7 @@ void save_header_build(uint8_t out[SAVE_BLOCK_SIZE], uint8_t version,
 static const uint8_t legacy_sig[6] = { 0x65, 0x65, 0x70, 0x01, 0x00, 0x08 };
 
 save_layout_t save_format_detect(const uint8_t block0[SAVE_BLOCK_SIZE],
+                                 uint8_t expect_version, bool allow_legacy,
                                  uint8_t *out_version, uint8_t *out_len) {
     if (out_version) *out_version = 0;
     if (out_len)     *out_len     = 0;
@@ -42,11 +43,11 @@ save_layout_t save_format_detect(const uint8_t block0[SAVE_BLOCK_SIZE],
         const uint8_t v = block0[SAVE_HDR_VERSION];
         if (out_version) *out_version = v;
         if (out_len)     *out_len     = block0[SAVE_HDR_LEN];
-        if (v == SAVE_VERSION) return SAVE_LAYOUT_CURRENT;
-        return (v < SAVE_VERSION) ? SAVE_LAYOUT_OLDER : SAVE_LAYOUT_NEWER;
+        if (v == expect_version) return SAVE_LAYOUT_CURRENT;
+        return (v < expect_version) ? SAVE_LAYOUT_OLDER : SAVE_LAYOUT_NEWER;
     }
 
-    if (memcmp(block0, legacy_sig, sizeof legacy_sig) == 0)
+    if (allow_legacy && memcmp(block0, legacy_sig, sizeof legacy_sig) == 0)
         return SAVE_LAYOUT_LEGACY;
 
     return SAVE_LAYOUT_BLANK;

@@ -44,7 +44,7 @@ static void write_now(void) {
     uint8_t payload[SAVE_BLOCK_SIZE];
     uint8_t hdr[SAVE_BLOCK_SIZE];
     pack_payload(payload);
-    save_header_build(hdr, SAVE_VERSION, payload, (uint8_t)sizeof rec);
+    save_header_build(hdr, SAVE_PROGRESS_VERSION, payload, (uint8_t)sizeof rec);
 
     /* Payload first: if power is lost between the two writes, the stale
      * header's CRC will not match the new payload, so the next boot resets
@@ -83,7 +83,7 @@ bool save_init(void) {
 
     eeprom_read(HDR_BLOCK, block0);
 
-    switch (save_format_detect(block0, &version, &len)) {
+    switch (save_format_detect(block0, SAVE_PROGRESS_VERSION, true, &version, &len)) {
     case SAVE_LAYOUT_CURRENT:
         if (len != sizeof rec) {       /* header disagrees about the payload */
             write_now();

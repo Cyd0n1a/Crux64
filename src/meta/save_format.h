@@ -17,7 +17,12 @@
 #include <stddef.h>
 
 #define SAVE_BLOCK_SIZE  8
-#define SAVE_VERSION     1
+
+/* One version byte per container, because they version independently: the
+ * progress record at blocks 0-1 and the settings record at blocks 2-3 are
+ * separate lineages and a single compile-time constant cannot serve both. */
+#define SAVE_PROGRESS_VERSION  1
+#define SAVE_SETTINGS_VERSION  1
 
 /* Byte offsets within the block-0 header. Bytes 0-2 are the magic. */
 #define SAVE_HDR_VERSION   3
@@ -27,9 +32,9 @@
 #define SAVE_HDR_RESERVED  7
 
 typedef enum {
-    SAVE_LAYOUT_CURRENT,  /* CRX header, version == SAVE_VERSION */
-    SAVE_LAYOUT_OLDER,    /* CRX header, version <  SAVE_VERSION */
-    SAVE_LAYOUT_NEWER,    /* CRX header, version >  SAVE_VERSION */
+    SAVE_LAYOUT_CURRENT,  /* CRX header, version == the expected one */
+    SAVE_LAYOUT_OLDER,    /* CRX header, version <  the expected one */
+    SAVE_LAYOUT_NEWER,    /* CRX header, version >  the expected one */
     SAVE_LAYOUT_LEGACY,   /* written by the old eepromfs container */
     SAVE_LAYOUT_BLANK,    /* unrecognised: fresh or foreign cart */
 } save_layout_t;
@@ -44,12 +49,16 @@ uint16_t save_crc16(const uint8_t *data, size_t len);
 void save_header_build(uint8_t out[SAVE_BLOCK_SIZE], uint8_t version,
                        const uint8_t *payload, uint8_t len);
 
-/* Classifies a cart from its first block. Reports the header's version and
- * length bytes through the out-params when they exist (zero otherwise);
- * both may be NULL. Deliberately does NOT judge whether the length is
- * acceptable — the expected size differs per version, so save.c owns that
- * decision. */
+/* Classifies a container from its header block. `expect_version` is the
+ * version this caller understands; `allow_legacy` enables the pre-fix
+ * eepromfs signature check, which is only meaningful at block 0 — the
+ * settings container must pass false or it can adopt unrelated bytes as a
+ * legacy record. Reports the header's version and length bytes through the
+ * out-params when they exist (zero otherwise); both may be NULL.
+ * Deliberately does NOT judge whether the length is acceptable — the
+ * expected size differs per version, so the caller owns that decision. */
 save_layout_t save_format_detect(const uint8_t block0[SAVE_BLOCK_SIZE],
+                                 uint8_t expect_version, bool allow_legacy,
                                  uint8_t *out_version, uint8_t *out_len);
 
 /* True when `payload` matches the CRC recorded in `block0`. */
