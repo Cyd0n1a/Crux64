@@ -233,6 +233,13 @@ static void draw_title_hud(const render_hud_t *hud) {
                      "(c) 2026 Cydonis Heavy Industries");
 }
 
+/**
+ * Renders a complete frame for the title, cinematic, menu, or gameplay mode.
+ *
+ * @param eye Camera position.
+ * @param target Point toward which the camera is directed.
+ * @param hud HUD and mode state used to select overlays and rendering options.
+ */
 void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
                   const render_hud_t *hud) {
     /* CPU meter: period between successive frames (render_frame runs once per
@@ -381,6 +388,9 @@ void render_frame(const T3DVec3 *eye, const T3DVec3 *target,
 
     if (hud->title) {
         draw_title_hud(hud);
+        /* The title menu draws over the vista and its record line, but
+         * under the splash fade so the boot transition still covers it. */
+        menu_draw();
         /* Boot splash fading out over the title scene (no-op once done). */
         splash_draw_overlay();
     } else if (hud->cinematic) {

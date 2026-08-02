@@ -28,6 +28,9 @@ OBJS = \
     $(BUILD_DIR)/src/sim/weather.o \
     $(BUILD_DIR)/src/meta/save.o \
     $(BUILD_DIR)/src/meta/save_format.o \
+    $(BUILD_DIR)/src/meta/save_container.o \
+    $(BUILD_DIR)/src/meta/settings_data.o \
+    $(BUILD_DIR)/src/meta/settings.o \
     $(BUILD_DIR)/src/meta/dialogue.o \
     $(BUILD_DIR)/src/meta/prologue.o \
     $(BUILD_DIR)/src/meta/scene02.o \

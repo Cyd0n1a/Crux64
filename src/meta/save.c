@@ -16,45 +16,30 @@
 
 #include "save.h"
 #include "save_format.h"
+#include "save_container.h"
 
-#define HDR_BLOCK      0
-#define PAYLOAD_BLOCK  1
+#define PROGRESS_BASE   0
+#define PROGRESS_PAYLOAD (PROGRESS_BASE + 1)
 
 static save_data_t rec;        /* live record */
 static bool  present;          /* an EEPROM is mounted and writable */
 static bool  dirty;            /* rec changed since the last flush */
-static float time_accum;       /* seconds not yet rolled into a minute */
+static float time_accum;       /**
+ * Resets the live save record to its default values.
+ */
 
 static void defaults(void) {
     memset(&rec, 0, sizeof rec);
     rec.initials[0] = rec.initials[1] = rec.initials[2] = 'A';
 }
 
-/* Copies the record into a whole-block buffer. The payload is exactly one
- * block today; the memset keeps the tail defined if it ever is not, so the
- * CRC stays reproducible. */
-static void pack_payload(uint8_t out[SAVE_BLOCK_SIZE]) {
-    memset(out, 0, SAVE_BLOCK_SIZE);
-    memcpy(out, &rec, sizeof rec);
-}
-
+/**
+ * Persists the current progress record when EEPROM storage is available.
+ */
 static void write_now(void) {
     if (!present) return;
-
-    uint8_t payload[SAVE_BLOCK_SIZE];
-    uint8_t hdr[SAVE_BLOCK_SIZE];
-    pack_payload(payload);
-    save_header_build(hdr, SAVE_VERSION, payload, (uint8_t)sizeof rec);
-
-    /* Payload first: if power is lost between the two writes, the stale
-     * header's CRC will not match the new payload, so the next boot resets
-     * instead of loading a half-updated record.
-     *
-     * Note libdragon asserts on a bad status (eeprom.c:80) before we ever
-     * see it, so in practice a failure halts rather than returning here.
-     * The check costs nothing and is correct if that ever changes. */
-    if (eeprom_write(PAYLOAD_BLOCK, payload) == 0 &&
-        eeprom_write(HDR_BLOCK, hdr) == 0)
+    if (save_container_store(PROGRESS_BASE, SAVE_PROGRESS_VERSION,
+                             (const uint8_t *)&rec, (uint8_t)sizeof rec))
         dirty = false;
 }
 
@@ -68,6 +53,11 @@ static bool adopt_payload(const uint8_t payload[SAVE_BLOCK_SIZE]) {
     return true;
 }
 
+/**
+ * Initializes progress state from EEPROM and creates or updates the stored record when needed.
+ *
+ * @returns `true` if EEPROM is present, `false` otherwise.
+ */
 bool save_init(void) {
     defaults();
     present    = false;
@@ -77,20 +67,12 @@ bool save_init(void) {
     if (eeprom_present() == EEPROM_NONE) return false;
     present = true;
 
-    uint8_t block0[SAVE_BLOCK_SIZE];
     uint8_t payload[SAVE_BLOCK_SIZE];
-    uint8_t version = 0, len = 0;
 
-    eeprom_read(HDR_BLOCK, block0);
-
-    switch (save_format_detect(block0, &version, &len)) {
+    switch (save_container_load(PROGRESS_BASE, SAVE_PROGRESS_VERSION, true,
+                                payload, (uint8_t)sizeof rec)) {
     case SAVE_LAYOUT_CURRENT:
-        if (len != sizeof rec) {       /* header disagrees about the payload */
-            write_now();
-            break;
-        }
-        eeprom_read(PAYLOAD_BLOCK, payload);
-        if (!save_payload_valid(block0, payload, len) || !adopt_payload(payload)) {
+        if (!adopt_payload(payload)) {   /* cleared slot, never written */
             defaults();
             write_now();
         }
@@ -98,9 +80,8 @@ bool save_init(void) {
 
     case SAVE_LAYOUT_OLDER:
         /* No version-0 CRX cart was ever released, so this is unreachable
-         * today. It exists so stage 2 can add a migration by filling in a
-         * branch rather than restructuring save_init, and is covered by a
-         * host test that builds a synthetic version-0 header. */
+         * today. It exists so a future progress-format change can migrate
+         * by filling in a branch rather than restructuring save_init. */
         defaults();
         write_now();
         break;
@@ -108,8 +89,9 @@ bool save_init(void) {
     case SAVE_LAYOUT_LEGACY:
         /* Pre-fix cart written by eepromfs: its record sits at block 1,
          * because eepfs reserved exactly one block for the signature
-         * (eepromfs.c:241). Adopt it and restamp in the new format. */
-        eeprom_read(PAYLOAD_BLOCK, payload);
+         * (eepromfs.c:241). save_container_load returns LEGACY without
+         * reading it, since only we know that layout. Adopt and restamp. */
+        eeprom_read(PROGRESS_PAYLOAD, payload);
         if (!adopt_payload(payload)) defaults();
         dirty = true;
         write_now();

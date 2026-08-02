@@ -8,6 +8,12 @@
  * for the wind, heartbeat and event SFX, which are clamped in on top. */
 #define MUSIC_GAIN 0.62f
 
+/* Player volumes (settings.c). MUSIC_GAIN is the fixed mix balance; these
+ * scale on top of it, and music.c's pause duck is a third multiplier, so
+ * none of the three can fight the others. */
+static float user_music_gain = 1.f;
+static float user_sfx_gain   = 1.f;
+
 /* GDD 3.3: 22kHz mono keeps a big margin of CPU for the sim while the
  * continuous layers run every sample. Output is duplicated L=R. */
 #define SAMPLE_RATE 22050
@@ -235,6 +241,11 @@ static const float pad_freq[4] = { 55.00f, 65.41f, 82.41f, 110.00f };  /* A mino
 /* Heartbeat: a 46Hz thud whose rate + volume climb with stress. */
 static float hb_clock, hb_env, hb_ph;
 
+/**
+ * Renders synthesized ambient layers, heartbeat, one-shot voices, and streamed music into an interleaved stereo buffer.
+ * @param buf Destination buffer for interleaved 16-bit stereo samples.
+ * @param nframes Number of stereo frames to render.
+ */
 static void render(short *buf, int nframes) {
     /* Real music now owns the "bed" role the drone was standing in for;
      * silence the drone whenever a track is streaming (GDD 3.3). If the
@@ -334,13 +345,18 @@ static void render(short *buf, int nframes) {
         /* Fold in the streamed MP3 (stereo), diegetic layers centred on top. */
         float ml, mr;
         music_sample(&ml, &mr);
-        float outL = clampf(sample + ml * MUSIC_GAIN, -1.f, 1.f);
-        float outR = clampf(sample + mr * MUSIC_GAIN, -1.f, 1.f);
+        float outL = clampf(sample * user_sfx_gain +
+                            ml * MUSIC_GAIN * user_music_gain, -1.f, 1.f);
+        float outR = clampf(sample * user_sfx_gain +
+                            mr * MUSIC_GAIN * user_music_gain, -1.f, 1.f);
         buf[i * 2]     = (short)(outL * 26000.f);
         buf[i * 2 + 1] = (short)(outR * 26000.f);
     }
 }
 
+/**
+ * Initializes the synthesizer and its audio processing state.
+ */
 void synth_init(void) {
     for (int i = 0; i < LUT_SIZE; i++)
         sine_lut[i] = sinf((float)i * (6.2831853f / (float)LUT_SIZE));
@@ -350,6 +366,19 @@ void synth_init(void) {
     rsp_synth_init();
 }
 
+/**
+ * Set the user-configurable music and sound-effect gains.
+ * @param music Music gain, clamped to the range [0, 1].
+ * @param sfx Sound-effect gain, clamped to the range [0, 1].
+ */
+void synth_set_gains(float music, float sfx) {
+    user_music_gain = clampf(music, 0.f, 1.f);
+    user_sfx_gain   = clampf(sfx,   0.f, 1.f);
+}
+
+/**
+ * Submits rendered audio to all currently available output buffers.
+ */
 void synth_poll(void) {
     while (audio_can_write()) {
         short *buf = audio_write_begin();

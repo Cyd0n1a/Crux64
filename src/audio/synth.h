@@ -18,6 +18,12 @@
 void synth_init(void);
 void synth_poll(void);      /* fill pending audio buffers; call once/frame */
 
+/* Output gains, 0..1, pushed from settings.c when the player changes them.
+ * Stored in statics rather than polled: the mix loop runs once per output
+ * sample and must not reach outside itself. `sfx` scales the whole
+ * diegetic layer — wind, drone bed, heartbeat and one-shots alike. */
+void synth_set_gains(float music, float sfx);
+
 /* Continuous state, pushed from the climber sim each frame. */
 void synth_set_altitude(float alt01);   /* 0..1: higher = fiercer wind gusts */
 void synth_set_stress(float stress01);  /* 0..1: heartbeat rate + volume */

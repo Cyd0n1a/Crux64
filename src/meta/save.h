@@ -9,8 +9,8 @@
  * exactly to the GDD's layout so it lands in one block on a 4Kbit cart.
  * We keep the live copy in RAM, fold this session's progress into it for
  * free every frame, and only flush to EEPROM at natural rest points
- * (piton checkpoints, the end of a fall). An eepromfs write blocks the
- * CPU for milliseconds per block, so it must never run per frame. */
+ * (piton checkpoints, the end of a fall). Each block write blocks the CPU
+ * for ~6ms, so it must never run per frame. */
 typedef struct __attribute__((packed)) {
     char     initials[3];   /* player initials (default "AAA") */
     uint16_t max_altitude;  /* highest hip altitude reached, meters */
@@ -20,9 +20,9 @@ typedef struct __attribute__((packed)) {
 
 _Static_assert(sizeof(save_data_t) == 8, "save_data_t must be one 8-byte EEPROM block");
 
-/* Mounts eepromfs and loads the record into RAM. On a fresh or foreign
- * cart the signature won't match, so we wipe to a clean slot with our
- * defaults. Returns false when no EEPROM is present — the session still
+/* Loads the record into RAM through the block-0/1 container. On a fresh or
+ * foreign cart nothing validates, so we fall back to defaults and stamp
+ * them down. Returns false when no EEPROM is present — the session still
  * runs, nothing just persists. Safe to read save_get() either way. */
 bool save_init(void);
 
